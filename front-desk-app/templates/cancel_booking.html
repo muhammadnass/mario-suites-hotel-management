@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Cancel Booking - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Cancel booking &mdash; {{ booking['guest_name'] }}</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('cancel_booking', booking_id=booking['id']) }}">
+  <div class="detail-grid" style="margin-bottom:0;">
+    <div><span class="detail-label">Room</span><span>{{ booking['room_number'] }} ({{ booking['floor'] }})</span></div>
+    <div><span class="detail-label">Check-in</span><span>{{ booking['check_in']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Paid so far</span><span>&#8358;{{ "{:,.0f}".format(amount_paid_so_far) }}</span></div>
+  </div>
+  {% if amount_paid_so_far > 0 %}
+  <p class="hint">Any amount already paid (&#8358;{{ "{:,.0f}".format(amount_paid_so_far) }}) will be issued to the guest as store credit.</p>
+  {% endif %}
+  <label>Reason for cancellation<textarea name="cancel_reason" rows="3"></textarea></label>
+  <div class="form-actions">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Back</a>
+    <button type="submit" class="btn btn-danger">Cancel booking</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

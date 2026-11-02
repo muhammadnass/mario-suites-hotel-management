@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Add Payment - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Add payment &mdash; {{ booking['guest_name'] }}</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('add_payment', booking_id=booking['id']) }}">
+  <div class="detail-grid" style="margin-bottom:0;">
+    <div><span class="detail-label">Room</span><span>{{ booking['room_number'] }} ({{ booking['floor'] }})</span></div>
+    <div><span class="detail-label">Amount due</span><span>&#8358;{{ "{:,.0f}".format(amount_due) }}</span></div>
+    <div><span class="detail-label">Paid so far</span><span>&#8358;{{ "{:,.0f}".format(amount_paid_so_far) }}</span></div>
+    <div><span class="detail-label">Balance remaining</span><span>&#8358;{{ "{:,.0f}".format(balance_remaining) }}</span></div>
+  </div>
+
+  <div class="payment-section">
+    <label class="payment-section-title">Payment</label>
+    <div id="payment_rows">
+      <div class="payment-row">
+        <select name="payment_method[]">
+          <option value="cash">Cash</option>
+          <option value="transfer">Transfer</option>
+          <option value="pos">POS</option>
+        </select>
+        <input type="text" inputmode="decimal" class="amount-input" name="payment_amount[]" placeholder="Amount (&#8358;)">
+        <span></span>
+      </div>
+    </div>
+    <button type="button" id="add_payment_row" class="btn btn-secondary btn-small" style="align-self:flex-start;">+ Add payment line</button>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Record payment</button>
+  </div>
+</form>
+</div>
+
+<script>
+  document.getElementById('add_payment_row').addEventListener('click', function () {
+    const rows = document.getElementById('payment_rows');
+    const row = document.createElement('div');
+    row.className = 'payment-row';
+    row.innerHTML = `
+      <select name="payment_method[]">
+        <option value="cash">Cash</option>
+        <option value="transfer">Transfer</option>
+        <option value="pos">POS</option>
+      </select>
+      <input type="text" inputmode="decimal" class="amount-input" name="payment_amount[]" placeholder="Amount (₦)">
+      <button type="button" class="btn btn-secondary btn-small remove-payment-row" title="Remove">&times;</button>
+    `;
+    row.querySelector('.remove-payment-row').addEventListener('click', () => row.remove());
+    rows.appendChild(row);
+  });
+</script>
+
+{% endblock %}

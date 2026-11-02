@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Admin - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-title">Site Content</h2>
+
+    <form class="form-card" method="post" action="{{ url_for('admin_update_content') }}">
+      <label>Overview text<textarea name="overview_text" rows="4" required>{{ content['overview_text'] }}</textarea></label>
+      <label>Address<input type="text" name="address" value="{{ content['address'] }}" required></label>
+      <div class="form-row">
+        <label>Phone 1<input type="text" name="phone1" value="{{ content['phone1'] }}" required></label>
+        <label>Phone 2<input type="text" name="phone2" value="{{ content['phone2'] }}"></label>
+      </div>
+      <label>
+        WhatsApp number (digits only, country code, no +)
+        <input type="text" name="whatsapp_number" value="{{ content['whatsapp_number'] }}" required>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-call">Save content</button>
+      </div>
+    </form>
+
+    <h2 class="section-title">Rooms</h2>
+    <div class="form-card" style="max-width:860px;">
+      {% for r in rooms %}
+      <form class="admin-room-row" method="post" action="{{ url_for('admin_edit_room', room_id=r['id']) }}" enctype="multipart/form-data">
+        <label>Name<input type="text" name="name" value="{{ r['name'] }}" required></label>
+        <label>Floor<input type="text" name="floor" value="{{ r['floor'] }}" required></label>
+        <label>Price/night<input type="text" name="price_per_night" value="{{ r['price_per_night']|int }}" required></label>
+        <label>Photo<input type="file" name="photo" accept="image/*"></label>
+        <button type="submit" class="btn btn-outline btn-small" style="grid-column: span 4; justify-self:start;">Save Room {{ r['name'] }}</button>
+      </form>
+      {% endfor %}
+    </div>
+
+    <h3 style="margin-top:28px;">Add a room</h3>
+    <form class="form-card" method="post" action="{{ url_for('admin_add_room') }}">
+      <div class="form-row">
+        <label>Name<input type="text" name="name" required></label>
+        <label>Floor<input type="text" name="floor" required></label>
+      </div>
+      <label>Price per night<input type="text" name="price_per_night" required></label>
+      <div class="form-actions"><button type="submit" class="btn btn-call">Add room</button></div>
+    </form>
+
+    <h3 style="margin-top:28px;">Import rooms from front-desk export</h3>
+    <p style="color:var(--color-muted); font-size:14px; max-width:640px;">
+      On the front-desk computer, export <code>rooms_export.json</code> from the Rooms page (Admin/Manager only),
+      then upload it here to keep public prices in sync. This is a manual step because the two apps run on
+      different, disconnected computers.
+    </p>
+    <form class="form-card" method="post" action="{{ url_for('admin_import_rooms') }}" enctype="multipart/form-data">
+      <label>rooms_export.json<input type="file" name="rooms_file" accept="application/json" required></label>
+      <div class="form-actions"><button type="submit" class="btn btn-outline">Import</button></div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

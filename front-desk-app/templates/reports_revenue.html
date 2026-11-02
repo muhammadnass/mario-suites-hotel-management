@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Revenue Dashboard - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head no-print">
+  <h1>Revenue dashboard</h1>
+  <a href="{{ url_for('guests_report', period=period) }}" class="btn btn-secondary">Guest-by-guest report</a>
+</div>
+
+<div class="filter-pills no-print">
+  {% for p, label in [('today','Today'),('week','Last 7 days'),('month','Last 30 days'),('year','Last 365 days')] %}
+  <a href="{{ url_for('revenue_report', period=p) }}" class="filter-pill {{ 'active' if period == p }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<form class="search-bar no-print" method="get" action="{{ url_for('revenue_report') }}" style="max-width:none;">
+  <input type="hidden" name="period" value="custom">
+  <input type="date" name="from" value="{{ from_date }}" required>
+  <input type="date" name="to" value="{{ to_date }}" required>
+  <button type="submit" class="btn btn-secondary">Custom range</button>
+</form>
+
+<p class="hint">{{ from_date }} to {{ to_date }} &middot; generated {{ generated_at }}</p>
+
+<div class="stat-grid" style="grid-template-columns: repeat(1, 1fr); max-width:320px;">
+  <div class="stat-card">
+    <span class="stat-card-icon stat-card-icon-accent">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 8v8M15 8v8M8 11h8M8 13h8"/></svg>
+    </span>
+    <span class="stat-value">&#8358;{{ "{:,.0f}".format(total_revenue) }}</span>
+    <span class="stat-label">Total revenue, selected period</span>
+  </div>
+</div>
+
+<div class="report-grid">
+  <div class="report-card">
+    <h3>Revenue by staff</h3>
+    {% if by_staff %}
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Staff</th><th>Bookings</th><th>Revenue</th></tr></thead>
+      <tbody>
+        {% for s in by_staff %}
+        <tr><td>{{ s['staff_name'] }}</td><td>{{ s['bookings_count'] }}</td><td>&#8358;{{ "{:,.0f}".format(s['revenue'] or 0) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No bookings in this period.</p>
+    {% endif %}
+  </div>
+
+  <div class="report-card">
+    <h3>Revenue by customer</h3>
+    {% if by_customer %}
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Guest</th><th>Bookings</th><th>Revenue</th></tr></thead>
+      <tbody>
+        {% for c in by_customer %}
+        <tr><td><a href="{{ url_for('guest_detail', guest_id=c['id']) }}">{{ c['name'] }}</a></td><td>{{ c['bookings_count'] }}</td><td>&#8358;{{ "{:,.0f}".format(c['revenue'] or 0) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No bookings in this period.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

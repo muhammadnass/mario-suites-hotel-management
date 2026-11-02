@@ -1,0 +1,16 @@
+# Render "Blueprint" — lets Render auto-detect how to deploy the public
+# website straight from this repo, instead of filling in the New Web
+# Service form by hand. In the Render dashboard: New + -> Blueprint ->
+# pick this repo. Only public-website/ is deployed; front-desk-app/ is
+# never meant to be hosted on the internet (see the root README.md).
+services:
+  - type: web
+    name: mario-suites-public-website
+    runtime: python
+    plan: free
+    rootDir: public-website
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true

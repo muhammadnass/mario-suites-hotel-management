@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}New Booking - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>New Booking</h1>
+</div>
+
+{% if rooms %}
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('new_booking') }}">
+  <label>
+    Guest *
+    <select name="guest_id" id="guest_id" required>
+      <option value="">Select a guest&hellip;</option>
+      {% for g in guests %}
+      <option value="{{ g['id'] }}" data-credit="{{ g['credit_balance'] or 0 }}"
+        {{ 'selected' if form.get('guest_id')|string == g['id']|string }}>
+        {{ g['name'] }} &mdash; {{ g['phone'] }}{% if g['credit_balance'] and g['credit_balance'] > 0 %} (&#8358;{{ "{:,.0f}".format(g['credit_balance']) }} credit){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <p class="hint">Guest not in the list yet? <a href="{{ url_for('add_guest') }}">Add a new guest</a> first.</p>
+
+  <label>
+    Room *
+    <select name="room_id" id="room_id" required>
+      <option value="">Select an available room&hellip;</option>
+      {% for r in rooms %}
+      <option value="{{ r['id'] }}" data-price="{{ r['price_per_night'] }}"
+        {{ 'selected' if form.get('room_id')|string == r['id']|string }}>
+        {{ r['room_number'] }} ({{ r['floor'] }}) &mdash; &#8358;{{ "{:,.0f}".format(r['price_per_night']) }}/night
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <div class="form-row">
+    <label>
+      Check-in date *
+      <input type="date" name="check_in" id="check_in" value="{{ form.get('check_in', today) }}" required>
+    </label>
+    <label>
+      Check-in time *
+      <input type="time" name="check_in_time" id="check_in_time" value="{{ form.get('check_in_time', now_time) }}" required>
+    </label>
+  </div>
+  <div class="form-row">
+    <label>
+      Expected check-out date *
+      <input type="date" name="expected_check_out" id="expected_check_out" value="{{ form.get('expected_check_out','') }}" required>
+    </label>
+    <label>
+      Expected check-out time *
+      <input type="time" name="expected_check_out_time" id="expected_check_out_time" value="{{ form.get('expected_check_out_time','12:00') }}" required>
+    </label>
+  </div>
+
+  <div class="total-preview" id="total_preview">Select a room and dates to see the total.</div>
+
+  <div class="payment-section" id="credit_section" style="display:none;">
+    <label class="payment-section-title">Apply store credit</label>
+    <p class="hint" id="credit_hint" style="margin-top:0;"></p>
+    <label>
+      Credit to apply (&#8358;)
+      <input type="text" inputmode="decimal" class="amount-input" name="credit_to_apply" id="credit_to_apply" value="0">
+    </label>
+  </div>
+
+  <div class="payment-section">
+    <label class="payment-section-title">Payment at check-in</label>
+    <p class="hint" style="margin-top:0;">Record cash, transfer or POS payments. Leave the list empty if payment is pending.</p>
+
+    <div id="payment_rows"></div>
+
+    <button type="button" id="add_payment_row" class="btn btn-secondary btn-small" style="align-self:flex-start;">+ Add payment line</button>
+
+    <div class="payment-summary" id="payment_summary">No payment recorded yet &mdash; status will be <strong>Pending</strong>.</div>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Confirm Booking</button>
+  </div>
+</form>
+</div>
+
+<script>
+  const guestSelect = document.getElementById('guest_id');
+  const roomSelect = document.getElementById('room_id');
+  const checkIn = document.getElementById('check_in');
+  const checkOut = document.getElementById('expected_check_out');
+  const preview = document.getElementById('total_preview');
+  const paymentRows = document.getElementById('payment_rows');
+  const paymentSummary = document.getElementById('payment_summary');
+  const creditSection = document.getElementById('credit_section');
+  const creditHint = document.getElementById('credit_hint');
+  const creditInput = document.getElementById('credit_to_apply');
+
+  let currentTotal = 0;
+
+  function parseAmt(value) { return parseFloat(String(value || '').replace(/,/g, '')) || 0; }
+  function fmtAmt(value) {
+    const parts = String(value).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+
+  function selectedGuestCredit() {
+    const option = guestSelect.options[guestSelect.selectedIndex];
+    return option ? (parseFloat(option.dataset.credit) || 0) : 0;
+  }
+
+  function updateCreditSection() {
+    const credit = selectedGuestCredit();
+    if (credit <= 0) {
+      creditSection.style.display = 'none';
+      creditInput.value = 0;
+      updatePaymentSummary();
+      return;
+    }
+    creditSection.style.display = '';
+    const maxApplicable = currentTotal > 0 ? Math.min(credit, currentTotal) : credit;
+    creditInput.max = maxApplicable;
+    if (parseAmt(creditInput.value) > maxApplicable || !creditInput.dataset.touched) {
+      creditInput.value = fmtAmt(maxApplicable.toFixed(2));
+    }
+    creditHint.textContent = "This guest has ₦" + credit.toLocaleString() +
+      " in store credit available" + (currentTotal > 0 ? " (up to ₦" + maxApplicable.toLocaleString() + " applies to this booking)." : ".");
+    updatePaymentSummary();
+  }
+
+  function updateTotal() {
+    const option = roomSelect.options[roomSelect.selectedIndex];
+    const price = option ? parseFloat(option.dataset.price) : NaN;
+    const inDate = new Date(checkIn.value);
+    const outDate = new Date(checkOut.value);
+
+    if (!price || !checkIn.value || !checkOut.value) {
+      preview.textContent = "Select a room and dates to see the total.";
+      currentTotal = 0;
+      updateCreditSection();
+      return;
+    }
+
+    const nights = Math.round((outDate - inDate) / (1000 * 60 * 60 * 24));
+    if (nights <= 0) {
+      preview.textContent = "Check-out date must be after the check-in date.";
+      currentTotal = 0;
+      updateCreditSection();
+      return;
+    }
+
+    const total = nights * price;
+    currentTotal = total;
+    preview.textContent = nights + " night(s) x ₦" + price.toLocaleString() +
+      " = ₦" + total.toLocaleString() + " total";
+    updateCreditSection();
+  }
+
+  function addPaymentRow() {
+    const row = document.createElement('div');
+    row.className = 'payment-row';
+    row.innerHTML = `
+      <select name="payment_method[]">
+        <option value="cash">Cash</option>
+        <option value="transfer">Transfer</option>
+        <option value="pos">POS</option>
+      </select>
+      <input type="text" inputmode="decimal" class="amount-input" name="payment_amount[]" placeholder="Amount (₦)">
+      <button type="button" class="btn btn-secondary btn-small remove-payment-row" title="Remove">&times;</button>
+    `;
+    row.querySelector('.remove-payment-row').addEventListener('click', () => {
+      row.remove();
+      updatePaymentSummary();
+    });
+    row.querySelectorAll('input, select').forEach(el => el.addEventListener('input', updatePaymentSummary));
+    paymentRows.appendChild(row);
+    updatePaymentSummary();
+  }
+
+  function updatePaymentSummary() {
+    const amounts = Array.from(document.querySelectorAll('input[name="payment_amount[]"]')).map(i => parseAmt(i.value));
+    const creditApplied = creditSection.style.display !== 'none' ? parseAmt(creditInput.value) : 0;
+    const paid = amounts.reduce((a, b) => a + b, 0) + creditApplied;
+    let creditNote = creditApplied > 0 ? (" (incl. ₦" + creditApplied.toLocaleString() + " store credit)") : "";
+
+    if (paid <= 0) {
+      paymentSummary.innerHTML = "No payment recorded yet &mdash; status will be <strong>Pending</strong>.";
+    } else if (currentTotal > 0 && paid >= currentTotal) {
+      paymentSummary.innerHTML = "₦" + paid.toLocaleString() + " recorded" + creditNote + " &mdash; status will be <strong>Paid in full</strong>.";
+    } else {
+      const balance = Math.max(0, currentTotal - paid);
+      paymentSummary.innerHTML = "₦" + paid.toLocaleString() + " recorded" + creditNote + " &mdash; status will be <strong>Partial</strong>" +
+        (currentTotal > 0 ? " (₦" + balance.toLocaleString() + " balance remaining)." : ".");
+    }
+  }
+
+  document.getElementById('add_payment_row').addEventListener('click', addPaymentRow);
+
+  creditInput.addEventListener('input', () => { creditInput.dataset.touched = '1'; updatePaymentSummary(); });
+  guestSelect.addEventListener('change', () => { creditInput.dataset.touched = ''; updateCreditSection(); });
+  roomSelect.addEventListener('change', updateTotal);
+  checkIn.addEventListener('change', updateTotal);
+  checkOut.addEventListener('change', updateTotal);
+  updateTotal();
+</script>
+
+{% else %}
+<p class="empty-state">No rooms are currently available. Check guests out from the Bookings page first.</p>
+{% endif %}
+
+{% endblock %}

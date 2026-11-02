@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Guest Revenue Report - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head no-print">
+  <h1>Guest revenue report</h1>
+  <button onclick="window.print()" class="btn btn-secondary">Print</button>
+</div>
+
+<div class="filter-pills no-print">
+  {% for p, label in [('today','Today'),('week','Last 7 days'),('month','Last 30 days'),('year','Last 365 days')] %}
+  <a href="{{ url_for('guests_report', period=p) }}" class="filter-pill {{ 'active' if period == p }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<form class="search-bar no-print" method="get" action="{{ url_for('guests_report') }}" style="max-width:none;">
+  <input type="date" name="from" value="{{ from_date }}" required>
+  <input type="date" name="to" value="{{ to_date }}" required>
+  <button type="submit" class="btn btn-secondary">Custom range</button>
+</form>
+
+<p class="hint">{{ from_date }} to {{ to_date }} &middot; generated {{ generated_at }}</p>
+
+<div class="report-grid">
+  <div class="report-card"><h3>Total guests</h3><div class="stat-value">{{ total_guests }}</div></div>
+  <div class="report-card"><h3>Total bookings</h3><div class="stat-value">{{ total_bookings }}</div></div>
+  <div class="report-card"><h3>Total revenue</h3><div class="stat-value">&#8358;{{ "{:,.0f}".format(total_revenue) }}</div></div>
+  <div class="report-card"><h3>Total collected</h3><div class="stat-value">&#8358;{{ "{:,.0f}".format(total_collected) }}</div></div>
+</div>
+
+{% if report_guests %}
+{% for g in report_guests %}
+<h2 class="section-title">{{ g['name'] }} &middot; {{ g['phone'] }}</h2>
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr><th>Check-in</th><th>Room</th><th>Nights</th><th>Billed</th><th>Paid</th><th>Method</th><th>Checked in by</th></tr>
+  </thead>
+  <tbody>
+    {% for b in g['bookings'] %}
+    <tr>
+      <td>{{ b['check_in']|fmt_dt }}</td>
+      <td>{{ b['room_number'] }}</td>
+      <td>{{ b['actual_nights'] if b['actual_nights'] else b['nights'] }}</td>
+      <td>&#8358;{{ "{:,.0f}".format(b['billed_amount']) }}</td>
+      <td>&#8358;{{ "{:,.0f}".format(b['amount_paid']) }}</td>
+      <td>{{ b['payment_methods_display'] }}</td>
+      <td>{{ b['checked_in_by'] or '&mdash;' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="3" class="t-bold">Guest total</td>
+      <td class="t-bold">&#8358;{{ "{:,.0f}".format(g['total_spent']) }}</td>
+      <td class="t-bold">&#8358;{{ "{:,.0f}".format(g['total_paid']) }}</td>
+      <td colspan="2"></td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% endfor %}
+{% else %}
+<p class="empty-state">No bookings found for this date range.</p>
+{% endif %}
+
+{% endblock %}

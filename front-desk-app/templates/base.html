@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Mario Suites Ltd{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>
+  (function () {
+    var saved = localStorage.getItem('theme');
+    var theme = saved || ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Mario Suites Ltd Logo" class="brand-logo">
+      <span class="brand-name">Mario Suites Ltd</span>
+    </div>
+    <div class="topbar-right">
+      <nav class="nav">
+        <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+        <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint in ['guests','add_guest','guest_detail'] }}">Guests</a>
+        <a href="{{ url_for('bookings') }}" class="{{ 'active' if request.endpoint in ['bookings','new_booking'] }}">Bookings</a>
+        <a href="{{ url_for('reservations_page') }}" class="{{ 'active' if request.endpoint in ['reservations_page','new_reservation','reservation_detail','checkin_from_reservation'] }}">Reservations</a>
+        <a href="{{ url_for('rooms') }}" class="{{ 'active' if request.endpoint == 'rooms' }}">Rooms</a>
+        {% if is_manager_or_admin %}
+        <a href="{{ url_for('revenue_report') }}" class="{{ 'active' if request.endpoint in ['revenue_report','guests_report','guests_report_setup'] }}">Revenue</a>
+        {% endif %}
+        {% if is_admin %}
+        <a href="{{ url_for('users_page') }}" class="{{ 'active' if request.endpoint in ['users_page','add_user','reset_password'] }}">Users</a>
+        {% endif %}
+        {% if current_username %}
+        <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">Profile</a>
+        {% endif %}
+      </nav>
+      {% if current_username %}
+      <div class="user-pill" title="Logged in as {{ current_username }} ({{ current_role }})">
+        <span>{{ current_username }}</span>
+        <span class="badge badge-{{ current_role }}" style="margin-left:6px;">{{ current_role|capitalize }}</span>
+      </div>
+      <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Log out</a>
+      {% endif %}
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="theme-toggle-track">
+          <span class="theme-toggle-icon">&#9728;</span>
+          <span class="theme-toggle-icon">&#9789;</span>
+          <span class="theme-toggle-thumb"></span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer no-print">
+    {{ hotel_name }} &middot; <code>{{ hotel_address }}</code>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('theme-toggle');
+    function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+    toggle.setAttribute('aria-pressed', isDark());
+    toggle.addEventListener('click', function () {
+      var next = isDark() ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      toggle.setAttribute('aria-pressed', next === 'dark');
+    });
+  })();
+</script>
+<script>
+  // Comma-formats any input with class "amount-input" as the person types
+  // (e.g. 20000 -> 20,000), and strips the commas back out right before
+  // the form submits, so the server still receives a plain number.
+  (function () {
+    function formatWithCommas(raw) {
+      if (!raw) return '';
+      var negative = raw.trim().startsWith('-');
+      var cleaned = raw.replace(/-/g, '');
+      var parts = cleaned.split('.');
+      var intPart = parts[0].replace(/\D/g, '');
+      intPart = intPart.replace(/^0+(?=\d)/, '');
+      intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      var result = intPart;
+      if (parts.length > 1) {
+        result += '.' + parts[1].replace(/\D/g, '').slice(0, 2);
+      }
+      return (negative ? '-' : '') + result;
+    }
+
+    document.addEventListener('input', function (e) {
+      if (e.target.matches && e.target.matches('input.amount-input')) {
+        var input = e.target;
+        var atEnd = input.selectionEnd === input.value.length;
+        input.value = formatWithCommas(input.value);
+        if (atEnd) {
+          input.selectionStart = input.selectionEnd = input.value.length;
+        }
+      }
+    });
+
+    document.addEventListener('submit', function (e) {
+      if (!e.target.querySelectorAll) return;
+      e.target.querySelectorAll('input.amount-input').forEach(function (input) {
+        input.value = input.value.replace(/,/g, '');
+      });
+    }, true);
+
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('input.amount-input').forEach(function (input) {
+        if (input.value) input.value = formatWithCommas(input.value);
+      });
+    });
+  })();
+</script>
+</body>
+</html>

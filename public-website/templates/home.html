@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Mario Suites Ltd — Kano{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Welcome to {{ hotel_name }}</h1>
+    <p class="lead">{{ site['overview_text'] }}</p>
+    <p class="lead" style="margin-top:-18px; font-size:15px;">
+      {{ site['address'] }}<br>
+      {{ site['phone1'] }}{% if site['phone2'] %} &middot; {{ site['phone2'] }}{% endif %}
+    </p>
+    <div class="cta-row">
+      <a href="{{ intro_wa_link }}" target="_blank" rel="noopener" class="btn btn-whatsapp">&#128172; Chat on WhatsApp</a>
+      <a href="{{ intro_tel_link }}" class="btn btn-call">&#128222; Call Us</a>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-title">A comfortable stay in Kano</h2>
+    <div class="room-grid">
+      <div class="room-card">
+        <div class="room-photo-placeholder">Clean Rooms</div>
+        <div class="room-card-body"><p>Simply furnished, well-kept rooms for a restful stay.</p></div>
+      </div>
+      <div class="room-card">
+        <div class="room-photo-placeholder">Great Location</div>
+        <div class="room-card-body"><p>Conveniently placed opposite BUK New Site.</p></div>
+      </div>
+      <div class="room-card">
+        <div class="room-photo-placeholder">Friendly Service</div>
+        <div class="room-card-body"><p>A warm welcome from our front-desk team, any time.</p></div>
+      </div>
+    </div>
+    <div class="cta-row" style="margin-top:36px;">
+      <a href="{{ url_for('rooms_page') }}" class="btn btn-outline">View Rooms &amp; Prices</a>
+      <a href="{{ url_for('location_page') }}" class="btn btn-outline">Find Us</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Reservation #{{ rv['id'] }} - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Reservation #{{ rv['id'] }}</h1>
+  <span class="badge badge-{{ 'paid' if rv['status']=='converted' else 'pending' }}">{{ rv['status']|capitalize }}</span>
+</div>
+
+<div class="detail-grid">
+  <div><span class="detail-label">Guest</span><span>{{ rv['guest_name'] }} &middot; {{ rv['guest_phone'] }}</span></div>
+  <div><span class="detail-label">Room</span><span>{{ rv['room_number'] }} ({{ rv['floor'] }})</span></div>
+  <div><span class="detail-label">Check-in</span><span>{{ rv['check_in']|fmt_dt }}</span></div>
+  <div><span class="detail-label">Expected check-out</span><span>{{ rv['expected_check_out']|fmt_dt }}</span></div>
+  <div><span class="detail-label">Nights</span><span>{{ rv['nights'] }}</span></div>
+  <div><span class="detail-label">Estimated total</span><span>&#8358;{{ "{:,.0f}".format(rv['total_amount']) }}</span></div>
+  {% if rv['notes'] %}<div><span class="detail-label">Notes</span><span>{{ rv['notes'] }}</span></div>{% endif %}
+  <div><span class="detail-label">Created by</span><span>{{ rv['created_by'] or '&mdash;' }}</span></div>
+</div>
+
+<div class="form-actions" style="justify-content:flex-start;">
+  {% if rv['status'] in ['pending','confirmed'] %}
+  <a href="{{ url_for('checkin_from_reservation', reservation_id=rv['id']) }}" class="btn btn-primary">Check in now</a>
+  {% if rv['status'] == 'pending' %}
+  <form method="post" action="{{ url_for('confirm_reservation', reservation_id=rv['id']) }}">
+    <button type="submit" class="btn btn-secondary">Confirm reservation</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('cancel_reservation', reservation_id=rv['id']) }}" onsubmit="return confirm('Cancel this reservation?');">
+    <button type="submit" class="btn btn-danger">Cancel reservation</button>
+  </form>
+  {% elif rv['status'] == 'converted' and rv['converted_booking_id'] %}
+  <a href="{{ url_for('booking_receipt', booking_id=rv['converted_booking_id']) }}" class="btn btn-secondary">View booking receipt</a>
+  {% endif %}
+  <a href="{{ url_for('reservations_page') }}" class="btn btn-secondary">Back to reservations</a>
+</div>
+
+{% endblock %}

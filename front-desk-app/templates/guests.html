@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Guests - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Guests</h1>
+  <a href="{{ url_for('add_guest') }}" class="btn btn-primary">+ Add Guest</a>
+</div>
+
+<form class="search-bar" method="get" action="{{ url_for('guests') }}">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search by name, phone or email&hellip;">
+  <button type="submit" class="btn btn-secondary">Search</button>
+</form>
+
+{% if guests %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr><th>Name</th><th>Phone</th><th>Email</th><th>Store credit</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for g in guests %}
+    <tr>
+      <td><a href="{{ url_for('guest_detail', guest_id=g['id']) }}">{{ g['name'] }}</a></td>
+      <td>{{ g['phone'] }}</td>
+      <td>{{ g['email'] or '&mdash;' }}</td>
+      <td>{% if g['credit_balance'] and g['credit_balance'] > 0 %}<span class="credit-pill">&#8358;{{ "{:,.0f}".format(g['credit_balance']) }}</span>{% else %}&mdash;{% endif %}</td>
+      <td><a href="{{ url_for('new_booking', guest_id=g['id']) }}" class="btn btn-small btn-secondary">New booking</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty-state">No guests found.</p>
+{% endif %}
+
+{% endblock %}

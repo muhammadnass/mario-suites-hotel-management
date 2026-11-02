@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Add User - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Add user</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('add_user') }}">
+  <label>Username<input type="text" name="username" value="{{ form.get('username','') }}" required></label>
+  <label>Password<input type="password" name="password" required></label>
+  <label>
+    Role
+    <select name="role">
+      <option value="staff" {{ 'selected' if form.get('role') == 'staff' }}>Staff &mdash; front desk only</option>
+      <option value="manager" {{ 'selected' if form.get('role') == 'manager' }}>Manager &mdash; rooms, prices &amp; revenue</option>
+      <option value="admin" {{ 'selected' if form.get('role') == 'admin' }}>Admin &mdash; full access</option>
+    </select>
+  </label>
+  <div class="form-actions">
+    <a href="{{ url_for('users_page') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Create user</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

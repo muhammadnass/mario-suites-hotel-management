@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Log in - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('login') }}" style="max-width:380px;">
+  <div class="t-center" style="text-align:center; margin-bottom:4px;">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Mario Suites Ltd" style="width:90px; height:90px; object-fit:contain;">
+    <h1 style="font-size:22px; margin-top:8px;">Mario Suites Ltd</h1>
+    <p class="hint" style="margin-top:4px;">Front desk sign in</p>
+  </div>
+
+  <label>
+    Username
+    <input type="text" name="username" value="{{ form.get('username','') }}" autofocus required>
+  </label>
+  <label>
+    Password
+    <input type="password" name="password" required>
+  </label>
+
+  <div class="form-actions" style="justify-content:stretch;">
+    <button type="submit" class="btn btn-primary" style="width:100%;">Log in</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

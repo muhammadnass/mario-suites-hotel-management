@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Reservations - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Reservations</h1>
+  <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ New Reservation</a>
+</div>
+
+<div class="filter-pills">
+  <a href="{{ url_for('reservations_page') }}" class="filter-pill {{ 'active' if not status_filter }}">All</a>
+  {% for s in ['pending','confirmed','converted','cancelled'] %}
+  <a href="{{ url_for('reservations_page', status=s) }}" class="filter-pill {{ 'active' if status_filter == s }}">{{ s|capitalize }}</a>
+  {% endfor %}
+</div>
+
+{% if reservations %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr><th>Guest</th><th>Room</th><th>Check-in</th><th>Check-out</th><th>Status</th><th>Amount</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for rv in reservations %}
+    <tr>
+      <td>{{ rv['guest_name'] }}</td>
+      <td>{{ rv['room_number'] }} ({{ rv['floor'] }})</td>
+      <td>{{ rv['check_in']|fmt_dt }}</td>
+      <td>{{ rv['expected_check_out']|fmt_dt }}</td>
+      <td><span class="badge badge-{{ 'paid' if rv['status']=='converted' else 'pending' }}">{{ rv['status']|capitalize }}</span></td>
+      <td>&#8358;{{ "{:,.0f}".format(rv['total_amount']) }}</td>
+      <td><a href="{{ url_for('reservation_detail', reservation_id=rv['id']) }}" class="btn btn-small btn-secondary">View</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty-state">No reservations found.</p>
+{% endif %}
+
+{% endblock %}

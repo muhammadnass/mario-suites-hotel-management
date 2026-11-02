@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Profile - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Profile</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('profile') }}">
+  <p class="hint" style="margin-top:0;">Signed in as <strong>{{ current_username }}</strong> ({{ current_role|capitalize }})</p>
+  <label>Current password<input type="password" name="current_password" required></label>
+  <label>New password<input type="password" name="new_password" required></label>
+  <label>Confirm new password<input type="password" name="confirm_password" required></label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Update password</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

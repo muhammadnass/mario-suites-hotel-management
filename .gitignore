@@ -1,0 +1,19 @@
+# Databases are created automatically on first run — don't commit them.
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Uploaded room photos (optional — remove this line if you want real
+# uploaded room photos tracked in git; by default they're left out since
+# they're produced at runtime via /admin, not part of the source code).
+public-website/static/room_photos/*
+!public-website/static/room_photos/.gitkeep
+
+# Editor/OS cruft
+.vscode/
+.DS_Store

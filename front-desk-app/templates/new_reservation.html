@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}New Reservation - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>New reservation</h1></div>
+<p class="hint">Hold a room for a guest ahead of arrival. No payment is collected now &mdash; it is recorded when the guest actually checks in.</p>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('new_reservation') }}">
+  <label>
+    Guest *
+    <select name="guest_id" required>
+      <option value="">Select a guest&hellip;</option>
+      {% for g in guests %}
+      <option value="{{ g['id'] }}" {{ 'selected' if form.get('guest_id')|string == g['id']|string }}>{{ g['name'] }} &mdash; {{ g['phone'] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <p class="hint">Guest not in the list yet? <a href="{{ url_for('add_guest') }}">Add a new guest</a> first.</p>
+
+  <label>
+    Room *
+    <select name="room_id" required>
+      <option value="">Select a room&hellip;</option>
+      {% for r in rooms %}
+      <option value="{{ r['id'] }}" {{ 'selected' if form.get('room_id')|string == r['id']|string }}>{{ r['room_number'] }} ({{ r['floor'] }}) &mdash; &#8358;{{ "{:,.0f}".format(r['price_per_night']) }}/night</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <div class="form-row">
+    <label>Check-in date *<input type="date" name="check_in" value="{{ form.get('check_in', today) }}" required></label>
+    <label>Expected check-out date *<input type="date" name="expected_check_out" value="{{ form.get('expected_check_out','') }}" required></label>
+  </div>
+
+  <label>Notes<textarea name="notes" rows="2">{{ form.get('notes','') }}</textarea></label>
+
+  <div class="form-actions">
+    <a href="{{ url_for('reservations_page') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Create reservation</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

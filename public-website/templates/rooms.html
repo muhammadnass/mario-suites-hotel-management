@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Rooms - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-title">Our Rooms</h2>
+    <div class="room-grid">
+      {% for item in rooms_with_links %}
+      {% set r = item.room %}
+      <div class="room-card">
+        {% if r['photo_filename'] %}
+        <img class="room-photo" src="{{ url_for('room_photo', filename=r['photo_filename']) }}" alt="{{ r['name'] }}">
+        {% else %}
+        <div class="room-photo-placeholder">{{ r['name'] }}</div>
+        {% endif %}
+        <div class="room-card-body">
+          <h3>Room {{ r['name'] }}</h3>
+          <div class="room-card-floor">{{ r['floor'] }}</div>
+          <div class="room-card-price">&#8358;{{ "{:,.0f}".format(r['price_per_night']) }} / night</div>
+          <a href="{{ item.book_link }}" target="_blank" rel="noopener" class="btn btn-whatsapp btn-small">Book via WhatsApp</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}

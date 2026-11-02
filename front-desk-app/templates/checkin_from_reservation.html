@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Check in - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Check in &mdash; {{ rv['guest_name'] }}</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('checkin_from_reservation', reservation_id=rv['id']) }}">
+  <div class="detail-grid" style="margin-bottom:0;">
+    <div><span class="detail-label">Room</span><span>{{ rv['room_number'] }} ({{ rv['floor'] }})</span></div>
+    <div><span class="detail-label">Reserved for</span><span>{{ rv['check_in']|fmt_dt }} &rarr; {{ rv['expected_check_out']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Estimated total</span><span>&#8358;{{ "{:,.0f}".format(rv['total_amount']) }}</span></div>
+  </div>
+
+  <div class="form-row">
+    <label>Actual check-in date *<input type="date" name="check_in_date" value="{{ today }}" required></label>
+    <label>Check-in time *<input type="time" name="check_in_time" value="{{ now_time }}" required></label>
+  </div>
+
+  <div class="payment-section">
+    <label class="payment-section-title">Payment at check-in</label>
+    <p class="hint" style="margin-top:0;">Record cash, transfer or POS payments. Leave the list empty if payment is pending.</p>
+    <div id="payment_rows">
+      <div class="payment-row">
+        <select name="payment_method[]">
+          <option value="cash">Cash</option>
+          <option value="transfer">Transfer</option>
+          <option value="pos">POS</option>
+        </select>
+        <input type="text" inputmode="decimal" class="amount-input" name="payment_amount[]" placeholder="Amount (&#8358;)">
+        <span></span>
+      </div>
+    </div>
+    <button type="button" id="add_payment_row" class="btn btn-secondary btn-small" style="align-self:flex-start;">+ Add payment line</button>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('reservation_detail', reservation_id=rv['id']) }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Confirm check-in</button>
+  </div>
+</form>
+</div>
+
+<script>
+  document.getElementById('add_payment_row').addEventListener('click', function () {
+    const rows = document.getElementById('payment_rows');
+    const row = document.createElement('div');
+    row.className = 'payment-row';
+    row.innerHTML = `
+      <select name="payment_method[]">
+        <option value="cash">Cash</option>
+        <option value="transfer">Transfer</option>
+        <option value="pos">POS</option>
+      </select>
+      <input type="text" inputmode="decimal" class="amount-input" name="payment_amount[]" placeholder="Amount (₦)">
+      <button type="button" class="btn btn-secondary btn-small remove-payment-row" title="Remove">&times;</button>
+    `;
+    row.querySelector('.remove-payment-row').addEventListener('click', () => row.remove());
+    rows.appendChild(row);
+  });
+</script>
+
+{% endblock %}

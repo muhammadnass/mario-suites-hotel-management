@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Extend Stay - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Extend stay &mdash; {{ booking['guest_name'] }}</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('extend_booking', booking_id=booking['id']) }}">
+  <div class="detail-grid" style="margin-bottom:0;">
+    <div><span class="detail-label">Room</span><span>{{ booking['room_number'] }} ({{ booking['floor'] }})</span></div>
+    <div><span class="detail-label">Check-in</span><span>{{ booking['check_in']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Current check-out</span><span>{{ booking['expected_check_out']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Paid so far</span><span>&#8358;{{ "{:,.0f}".format(amount_paid_so_far) }}</span></div>
+  </div>
+
+  <div class="form-row">
+    <label>New check-out date *<input type="date" name="new_check_out" required></label>
+    <label>New check-out time<input type="time" name="new_check_out_time" value="12:00"></label>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Extend stay</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

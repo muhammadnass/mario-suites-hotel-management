@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Guest Revenue Report - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Guest revenue report</h1></div>
+
+<div class="filter-pills">
+  {% for p, label in [('today','Today'),('week','Last 7 days'),('month','Last 30 days'),('year','Last 365 days')] %}
+  <a href="{{ url_for('guests_report', period=p) }}" class="filter-pill">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="get" action="{{ url_for('guests_report') }}">
+  <div class="form-row">
+    <label>From<input type="date" name="from" value="{{ default_from }}" required></label>
+    <label>To<input type="date" name="to" value="{{ default_to }}" required></label>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Run report</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

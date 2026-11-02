@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Check out {{ booking['guest_name'] }} - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Check out &mdash; {{ booking['guest_name'] }}</h1>
+</div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('checkout_booking', booking_id=booking['id']) }}">
+
+  <div class="detail-grid" style="margin-bottom:0;">
+    <div><span class="detail-label">Room</span><span>{{ booking['room_number'] }} ({{ booking['floor'] }})</span></div>
+    <div><span class="detail-label">Check-in</span><span>{{ booking['check_in']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Expected check-out</span><span>{{ booking['expected_check_out']|fmt_dt }}</span></div>
+    <div><span class="detail-label">Paid so far</span><span>&#8358;{{ "{:,.0f}".format(amount_paid_so_far) }}</span></div>
+  </div>
+
+  <div class="form-row">
+    <label>
+      Actual check-out date *
+      <input type="date" name="checkout_date" id="checkout_date" value="{{ default_date }}" required>
+    </label>
+    <label>
+      Actual check-out time *
+      <input type="time" name="checkout_time" id="checkout_time" value="{{ default_time }}" required>
+    </label>
+  </div>
+  <p class="hint" style="margin-top:-6px;">Checking out after 12:00pm counts as a stay for that day, per standard hotel policy.</p>
+
+  <div class="total-preview" id="settlement_preview">Pick a checkout date and time to see the final bill.</div>
+
+  <div class="payment-section">
+    <label class="payment-section-title">Settle the difference (optional)</label>
+    <p class="hint" style="margin-top:0;">If the guest is owed a refund, or still owes a balance, record it here. Choosing "No settlement right now" on a refund converts it to store credit for a future stay.</p>
+
+    <div class="form-row">
+      <label>
+        Action
+        <select name="settle_kind" id="settle_kind">
+          <option value="">No settlement right now</option>
+          <option value="refund">Refund guest</option>
+          <option value="extra_payment">Collect extra payment</option>
+        </select>
+      </label>
+      <label>
+        Method
+        <select name="settle_method">
+          <option value="cash">Cash</option>
+          <option value="transfer">Transfer</option>
+          <option value="pos">POS</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint" id="settle_hint" style="margin-top:0;"></p>
+    <label>
+      Amount (&#8358;)
+      <input type="text" inputmode="decimal" class="amount-input" name="settle_amount" id="settle_amount" placeholder="0.00">
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Confirm Check-out</button>
+  </div>
+</form>
+</div>
+
+<script>
+  const checkInDate = "{{ booking['check_in'][:10] }}";
+  const pricePerNight = {{ booking['price_per_night'] }};
+  const amountPaidSoFar = {{ amount_paid_so_far }};
+
+  const checkoutDate = document.getElementById('checkout_date');
+  const checkoutTime = document.getElementById('checkout_time');
+  const preview = document.getElementById('settlement_preview');
+  const settleKind = document.getElementById('settle_kind');
+  const settleAmount = document.getElementById('settle_amount');
+  const settleHint = document.getElementById('settle_hint');
+
+  let lastRefund = 0;
+  let lastBalance = 0;
+
+  function parseAmt(value) { return parseFloat(String(value || '').replace(/,/g, '')) || 0; }
+  function fmtAmt(value) {
+    const parts = String(value).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+
+  function actualNights() {
+    const inDate = new Date(checkInDate + "T00:00");
+    const outDate = new Date(checkoutDate.value + "T00:00");
+    let nights = Math.round((outDate - inDate) / (1000 * 60 * 60 * 24));
+    const [h, m] = (checkoutTime.value || "00:00").split(":").map(Number);
+    if (h > 12 || (h === 12 && m > 0)) nights += 1;
+    return Math.max(nights, 1);
+  }
+
+  function updateSettleHint() {
+    if (settleKind.value === '' && lastBalance > 0) {
+      settleHint.textContent = "No payment will be collected now — ₦" + lastBalance.toLocaleString() + " will remain owed on this booking.";
+    } else if (settleKind.value === '' && lastRefund > 0) {
+      settleHint.textContent = "₦" + lastRefund.toLocaleString() + " will be issued to the guest as store credit instead of being settled now.";
+    } else {
+      settleHint.textContent = "";
+    }
+  }
+
+  function updatePreview() {
+    if (!checkoutDate.value || !checkoutTime.value) {
+      preview.textContent = "Pick a checkout date and time to see the final bill.";
+      return;
+    }
+    const nights = actualNights();
+    const billed = nights * pricePerNight;
+    let line = nights + " night(s) billed x ₦" + pricePerNight.toLocaleString() + " = ₦" + billed.toLocaleString() + " total.";
+
+    lastRefund = 0;
+    lastBalance = 0;
+
+    if (amountPaidSoFar > billed) {
+      const refund = amountPaidSoFar - billed;
+      lastRefund = refund;
+      line += " Refund due: ₦" + refund.toLocaleString() + ".";
+      settleKind.value = "refund";
+      settleAmount.value = fmtAmt(refund.toFixed(2));
+    } else if (amountPaidSoFar < billed) {
+      const balance = billed - amountPaidSoFar;
+      lastBalance = balance;
+      line += " Balance still owed: ₦" + balance.toLocaleString() + ".";
+      settleKind.value = "extra_payment";
+      settleAmount.value = fmtAmt(balance.toFixed(2));
+    } else {
+      line += " Fully settled, no balance or refund.";
+      settleKind.value = "";
+      settleAmount.value = "";
+    }
+    preview.textContent = line;
+    updateSettleHint();
+  }
+
+  checkoutDate.addEventListener('input', updatePreview);
+  checkoutTime.addEventListener('input', updatePreview);
+  settleKind.addEventListener('change', updatePreview);
+  settleAmount.addEventListener('input', updateSettleHint);
+  updatePreview();
+</script>
+
+{% endblock %}

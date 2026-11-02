@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Add Guest - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Add guest</h1></div>
+
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('add_guest') }}">
+  <label>Full name *<input type="text" name="name" value="{{ form.get('name','') }}" required></label>
+  <label>Phone number *<input type="text" name="phone" value="{{ form.get('phone','') }}" required></label>
+  <label>Email<input type="email" name="email" value="{{ form.get('email','') }}"></label>
+  <label>Address<textarea name="address" rows="2">{{ form.get('address','') }}</textarea></label>
+  <div class="form-actions">
+    <a href="{{ url_for('guests') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Add guest</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}

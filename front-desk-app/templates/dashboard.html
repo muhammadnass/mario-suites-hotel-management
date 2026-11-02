@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <a href="{{ url_for('new_booking') }}" class="btn btn-primary">+ New Booking</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <span class="stat-card-icon stat-card-icon-available">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="1"/><circle cx="15" cy="12" r="1"/></svg>
+    </span>
+    <span class="stat-value">{{ available_rooms }}</span>
+    <span class="stat-label">Rooms available</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-card-icon stat-card-icon-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>
+    </span>
+    <span class="stat-value">{{ active_bookings }}</span>
+    <span class="stat-label">Guests checked in</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-card-icon stat-card-icon-reserved">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="2.6"/><path d="M3.5 19c0-3 2.5-5.4 5.5-5.4S14.5 16 14.5 19"/><circle cx="17" cy="9" r="2.1"/><path d="M15.2 13.8c2.6.3 4.5 2.5 4.5 5.2"/></svg>
+    </span>
+    <span class="stat-value">{{ total_guests }}</span>
+    <span class="stat-label">Total guests</span>
+  </div>
+  {% if is_manager_or_admin %}
+  <div class="stat-card">
+    <span class="stat-card-icon stat-card-icon-accent">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 8v8M15 8v8M8 11h8M8 13h8"/></svg>
+    </span>
+    <span class="stat-value">&#8358;{{ "{:,.0f}".format(total_revenue) }}</span>
+    <span class="stat-label">Total revenue &middot; &#8358;{{ "{:,.0f}".format(today_revenue) }} today</span>
+  </div>
+  {% endif %}
+</div>
+
+<h2 class="section-title">Room status</h2>
+<div class="room-grid">
+  {% for room in rooms %}
+    <div class="room-card room-{{ room['status'] }}">
+      <div class="room-number">{{ room['room_number'] }}</div>
+      <div class="room-floor">{{ room['floor'] }}</div>
+      <div class="room-price">&#8358;{{ "{:,.0f}".format(room['price_per_night']) }} / night</div>
+      <span class="badge badge-{{ room['status'] }}">{{ room['status']|capitalize }}</span>
+    </div>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">Current guests</h2>
+{% if current_stays %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr>
+      <th>Guest</th>
+      <th>Room</th>
+      <th>Check-in</th>
+      <th>Expected check-out</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for stay in current_stays %}
+    <tr>
+      <td>{{ stay['guest_name'] }}</td>
+      <td>{{ stay['room_number'] }} ({{ stay['floor'] }})</td>
+      <td>{{ stay['check_in']|fmt_dt }}</td>
+      <td>{{ stay['expected_check_out']|fmt_dt }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty-state">No guests checked in right now.</p>
+{% endif %}
+
+{% endblock %}

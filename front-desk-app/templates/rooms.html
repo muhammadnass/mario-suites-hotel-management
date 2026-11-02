@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Rooms - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rooms</h1>
+  {% if is_manager_or_admin %}
+  <a href="{{ url_for('export_rooms_json') }}" class="btn btn-secondary">Export rooms (for website)</a>
+  {% endif %}
+</div>
+
+<div class="room-grid">
+  {% for room in rooms %}
+  <div class="room-card room-{{ room['status'] }}">
+    <div class="room-number">{{ room['room_number'] }}</div>
+    <div class="room-floor">{{ room['floor'] }}</div>
+    <span class="badge badge-{{ room['status'] }}">{{ room['status']|capitalize }}</span>
+
+    {% if is_manager_or_admin %}
+    <form class="price-form" method="post" action="{{ url_for('edit_room', room_id=room['id']) }}">
+      <label>
+        Room number/name
+        <input type="text" name="room_number" value="{{ room['room_number'] }}" required>
+      </label>
+      <label>
+        Floor
+        <input type="text" name="floor" value="{{ room['floor'] }}" required>
+      </label>
+      <label>
+        Price / night (&#8358;)
+        <input type="text" inputmode="decimal" class="amount-input" name="price_per_night" value="{{ room['price_per_night']|int }}">
+      </label>
+      <button type="submit" class="btn btn-small btn-secondary">Save changes</button>
+    </form>
+    {% else %}
+    <div class="hint" style="margin-top:8px;">Price / night: &#8358;{{ "{:,.0f}".format(room['price_per_night']) }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if is_manager_or_admin %}
+<h2 class="section-title">Add a new room</h2>
+<div class="form-card-wrap">
+<form class="form-card" method="post" action="{{ url_for('add_room') }}">
+  <div class="form-row">
+    <label>Room number/name *<input type="text" name="room_number" placeholder="e.g. A4" required></label>
+    <label>Floor *<input type="text" name="floor" placeholder="e.g. First Floor" required></label>
+  </div>
+  <label>Price per night (&#8358;) *<input type="text" inputmode="decimal" class="amount-input" name="price_per_night" required></label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Add room</button>
+  </div>
+</form>
+</div>
+{% endif %}
+
+{% endblock %}

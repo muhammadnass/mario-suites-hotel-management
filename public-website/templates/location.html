@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Location - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-title">Find Us</h2>
+
+    <div class="map-frame">
+      <iframe src="{{ map_embed_url }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mario Suites Ltd location"></iframe>
+    </div>
+
+    <div class="contact-card">
+      <p><strong>Address:</strong> {{ site['address'] }}</p>
+      <p><strong>Phone:</strong> {{ site['phone1'] }}{% if site['phone2'] %} &middot; {{ site['phone2'] }}{% endif %}</p>
+      <div class="cta-row" style="justify-content:flex-start;">
+        <a href="{{ directions_url }}" target="_blank" rel="noopener" class="btn btn-call">&#128663; Get Directions</a>
+        <a href="{{ wa_url }}" target="_blank" rel="noopener" class="btn btn-whatsapp">&#128172; Chat on WhatsApp</a>
+        <a href="{{ tel_url }}" class="btn btn-outline">&#128222; Call Us</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

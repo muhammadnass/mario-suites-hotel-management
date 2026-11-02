@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ guest['name'] }} - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ guest['name'] }}</h1>
+  <a href="{{ url_for('new_booking', guest_id=guest['id']) }}" class="btn btn-primary">+ New Booking</a>
+</div>
+
+<div class="detail-grid">
+  <div><span class="detail-label">Phone</span><span>{{ guest['phone'] }}</span></div>
+  <div><span class="detail-label">Email</span><span>{{ guest['email'] or '&mdash;' }}</span></div>
+  <div><span class="detail-label">Address</span><span>{{ guest['address'] or '&mdash;' }}</span></div>
+  <div><span class="detail-label">Guest since</span><span>{{ guest['created_at'][:10] }}</span></div>
+</div>
+
+{% if credit_balance and credit_balance > 0 %}
+<div class="credit-banner credit-banner-active">
+  <span>Store credit available</span>
+  <span class="credit-banner-amount">&#8358;{{ "{:,.0f}".format(credit_balance) }}</span>
+</div>
+{% endif %}
+
+<h2 class="section-title">Booking history</h2>
+{% if bookings %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr><th>Room</th><th>Check-in</th><th>Check-out</th><th>Status</th><th>Amount</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for b in bookings %}
+    <tr>
+      <td>{{ b['room_number'] }} ({{ b['floor'] }})</td>
+      <td>{{ b['check_in']|fmt_dt }}</td>
+      <td>{{ (b['actual_check_out'] or b['expected_check_out'])|fmt_dt }}</td>
+      <td><span class="badge badge-{{ b['status'] }}">{{ b['status'].replace('_',' ')|capitalize }}</span></td>
+      <td>&#8358;{{ "{:,.0f}".format(b['actual_amount'] if b['actual_amount'] else b['total_amount']) }}</td>
+      <td><a href="{{ url_for('booking_receipt', booking_id=b['id']) }}" class="btn btn-small btn-secondary">Receipt</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty-state">No bookings yet.</p>
+{% endif %}
+
+{% if credits %}
+<h2 class="section-title">Store credit history</h2>
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Date</th><th>Note</th><th>Granted</th><th>Remaining</th></tr></thead>
+  <tbody>
+    {% for c in credits %}
+    <tr>
+      <td>{{ c['created_at'][:10] }}</td>
+      <td>{{ c['note'] or '&mdash;' }}</td>
+      <td>&#8358;{{ "{:,.0f}".format(c['amount']) }}</td>
+      <td>&#8358;{{ "{:,.0f}".format(c['remaining_amount']) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% endblock %}

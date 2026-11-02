@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Receipt {{ receipt_number }} - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head no-print">
+  <h1>Receipt {{ receipt_number }}</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">Back to Bookings</a>
+    <button onclick="window.print()" class="btn btn-primary">Print / Save as PDF</button>
+  </div>
+</div>
+
+<div class="receipt-wrap">
+<div class="receipt-ticket" id="receipt">
+  <div class="t-center t-section">
+    <div class="t-bold t-big">{{ hotel_name|upper }}</div>
+    <div class="t-small">{{ hotel_address }}</div>
+    {% for phone in hotel_phones %}
+    <div class="t-small">{{ phone }}</div>
+    {% endfor %}
+  </div>
+
+  <hr class="t-divider">
+
+  <div class="t-section">
+    <div class="t-row"><span>Receipt No.</span><span>{{ receipt_number }}</span></div>
+    <div class="t-row"><span>Date/Time</span><span>{{ generated_at }}</span></div>
+    <div class="t-row"><span>Status</span><span>{{ booking['status'].replace('_',' ')|upper }}</span></div>
+  </div>
+
+  <hr class="t-divider">
+
+  <div class="t-section">
+    <div class="t-bold">GUEST</div>
+    <div>{{ booking['guest_name'] }}</div>
+    <div>{{ booking['guest_phone'] }}</div>
+  </div>
+
+  <hr class="t-divider">
+
+  <div class="t-section">
+    <div class="t-row"><span>Room</span><span>{{ booking['room_number'] }} ({{ booking['floor'] }})</span></div>
+    <div class="t-row"><span>Check-in</span><span>{{ booking['check_in']|fmt_dt }}</span></div>
+    <div class="t-row"><span>Expected out</span><span>{{ booking['expected_check_out']|fmt_dt }}</span></div>
+    {% if is_checked_out %}
+    <div class="t-row"><span>Actual out</span><span>{{ booking['checkout_time'][:16].replace('T',' ') if booking['checkout_time'] else booking['actual_check_out'] }}</span></div>
+    {% endif %}
+  </div>
+
+  <hr class="t-divider">
+
+  <div class="t-section">
+    <div class="t-row t-bold"><span>Nights x Rate</span><span></span></div>
+    <div class="t-row"><span>{{ billed_nights }} x &#8358;{{ "{:,.0f}".format(booking['price_per_night']) }}</span><span>&#8358;{{ "{:,.0f}".format(billed_nights * booking['price_per_night']) }}</span></div>
+  </div>
+
+  {% if payments %}
+  <hr class="t-divider">
+  <div class="t-section">
+    <div class="t-bold">PAYMENTS</div>
+    {% for p in payments %}
+    <div class="t-row">
+      <span>{{ p['created_at'][:10] }} {{ p['method']|capitalize }}{{ ' (refund)' if p['kind'] == 'refund' else '' }}</span>
+      <span>{{ '-' if p['kind'] == 'refund' else '' }}&#8358;{{ "{:,.0f}".format(p['amount']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <hr class="t-divider">
+
+  <div class="t-section">
+    <div class="t-row t-bold t-big"><span>PAID</span><span>&#8358;{{ "{:,.0f}".format(amount_paid) }}</span></div>
+    {% if refund_amount > 0 %}
+    <div class="t-row t-bold"><span>REFUND DUE</span><span>&#8358;{{ "{:,.0f}".format(refund_amount) }}</span></div>
+    {% elif balance_due > 0 %}
+    <div class="t-row t-bold"><span>{{ 'BALANCE OWED' if is_checked_out else 'BALANCE DUE' }}</span><span>&#8358;{{ "{:,.0f}".format(balance_due) }}</span></div>
+    {% endif %}
+  </div>
+
+  <hr class="t-divider">
+
+  <div class="t-center t-small t-section">
+    <div>Thank you for staying with us.</div>
+    <div>{{ hotel_phones|join(' / ') }}</div>
+  </div>
+</div>
+</div>
+
+{% endblock %}
