@@ -25,13 +25,35 @@
     <h2 class="section-title">Rooms</h2>
     <div class="form-card" style="max-width:860px;">
       {% for r in rooms %}
-      <form class="admin-room-row" method="post" action="{{ url_for('admin_edit_room', room_id=r['id']) }}" enctype="multipart/form-data">
-        <label>Name<input type="text" name="name" value="{{ r['name'] }}" required></label>
-        <label>Floor<input type="text" name="floor" value="{{ r['floor'] }}" required></label>
-        <label>Price/night<input type="text" name="price_per_night" value="{{ r['price_per_night']|int }}" required></label>
-        <label>Photo<input type="file" name="photo" accept="image/*"></label>
-        <button type="submit" class="btn btn-outline btn-small" style="grid-column: span 4; justify-self:start;">Save Room {{ r['name'] }}</button>
-      </form>
+      <div style="display:flex; gap:16px; align-items:flex-start; padding:14px 0; border-bottom:1px solid var(--color-border);">
+        {% if r['photo_filename'] %}
+        <img src="{{ url_for('room_photo', filename=r['photo_filename']) }}" alt="{{ r['name'] }}"
+             style="width:90px; height:70px; object-fit:cover; border-radius:8px; flex-shrink:0;">
+        {% else %}
+        <div style="width:90px; height:70px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--color-bg-alt); color:var(--color-muted); font-size:11px; text-align:center;">No photo</div>
+        {% endif %}
+        <div style="flex:1;">
+          <form class="admin-room-row" method="post" action="{{ url_for('admin_edit_room', room_id=r['id']) }}" enctype="multipart/form-data">
+            <label>Name<input type="text" name="name" value="{{ r['name'] }}" required></label>
+            <label>Floor<input type="text" name="floor" value="{{ r['floor'] }}" required></label>
+            <label>Price/night<input type="text" name="price_per_night" value="{{ r['price_per_night']|int }}" required></label>
+            <label>New photo<input type="file" name="photo" accept="image/*"></label>
+            <button type="submit" class="btn btn-outline btn-small" style="grid-column: span 4; justify-self:start;">Save Room {{ r['name'] }}</button>
+          </form>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            {% if r['photo_filename'] %}
+            <form method="post" action="{{ url_for('admin_remove_room_photo', room_id=r['id']) }}"
+                  onsubmit="return confirm('Remove the photo for Room {{ r['name']|e }}? The card will fall back to a plain placeholder until a new one is uploaded.');">
+              <button type="submit" class="btn btn-outline btn-small">Remove photo</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('admin_delete_room', room_id=r['id']) }}"
+                  onsubmit="return confirm('Delete Room {{ r['name']|e }} from the website? This cannot be undone.');">
+              <button type="submit" class="btn btn-danger btn-small">Delete room</button>
+            </form>
+          </div>
+        </div>
+      </div>
       {% endfor %}
     </div>
 

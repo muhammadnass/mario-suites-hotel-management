@@ -16,4 +16,31 @@
 </form>
 </div>
 
+{% if is_admin %}
+<div class="form-card-wrap">
+<div class="form-card" style="border: 1px solid #A3492B;">
+  <h2 style="color:#A3492B; margin:0;">Danger Zone</h2>
+  <p class="hint" style="margin-top:0;">
+    Run this once, right before the hotel starts using the software for real, to clear out any
+    test guests, bookings, reservations and payments created while trying the app out.
+  </p>
+  <ul style="margin:0 0 4px; padding-left:20px; font-size:14px; color:var(--color-text);">
+    <li>Deletes <strong>all guests, bookings, reservations, payments and store credit</strong> — permanently, with no undo.</li>
+    <li>Keeps your <strong>room catalog</strong> (names, floors, prices) and <strong>every user account</strong> exactly as they are.</li>
+    <li>Marks every room <strong>available</strong> afterwards.</li>
+  </ul>
+  <p class="hint">Back up <code>hotel.db</code> first if you want to keep a copy of the demo data (see the README).</p>
+  <form method="post" action="{{ url_for('reset_demo_data') }}"
+        onsubmit="return confirm('This permanently deletes all guests, bookings, reservations and payments. This cannot be undone. Continue?');">
+    <label>Type <code>WIPE ALL DATA</code> to confirm
+      <input type="text" name="confirmation" placeholder="WIPE ALL DATA" autocomplete="off" required>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-danger">Wipe all demo data</button>
+    </div>
+  </form>
+</div>
+</div>
+{% endif %}
+
 {% endblock %}

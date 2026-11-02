@@ -30,6 +30,16 @@ from flask import (Flask, flash, redirect, render_template, request,
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+# Pillow is only used to draw placeholder room photos for the demo rooms
+# seeded below. If it's ever missing (e.g. requirements.txt wasn't
+# reinstalled yet), fall back gracefully instead of crashing the whole
+# app — rooms just keep showing the CSS gradient placeholder card.
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 app = Flask(__name__)
 app.secret_key = "mario-suites-ltd-public-site-change-this-secret-key"
 
@@ -46,6 +56,83 @@ HOTEL_NAME = "Mario Suites Ltd"
 HOTEL_LAT = 11.963389
 HOTEL_LNG = 8.432611
 ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
+# Demo rooms seeded for a first look at the site — same naming/floor/price
+# convention as front-desk-app's SEED_ROOMS, so the two line up out of the
+# box. Every one of these is a completely ordinary room row: rename it,
+# reprice it, swap its photo, or delete it from /admin exactly like a room
+# you added yourself — nothing here is special-cased or locked.
+SEED_ROOMS = [
+    ("A1", "Ground Floor", 20000),
+    ("A2", "Ground Floor", 20000),
+    ("A3", "Ground Floor", 20000),
+    ("A4", "Ground Floor", 20000),
+    ("A5", "Ground Floor", 20000),
+    ("B1", "First Floor", 25000),
+    ("B2", "First Floor", 25000),
+    ("B3", "First Floor", 25000),
+    ("B4", "First Floor", 25000),
+    ("B5", "First Floor", 25000),
+]
+
+
+def generate_placeholder_photo(name, floor):
+    """Draw a simple on-brand placeholder image for a demo room (gold-to-
+    bronze gradient card with the room name/floor on it) and save it under
+    static/room_photos/. Returns the filename to store in photo_filename,
+    or None if Pillow isn't installed or drawing fails for any reason —
+    the room card falls back to the plain CSS placeholder either way, so
+    this is a nice-to-have, never something that should break a deploy.
+    These are clearly placeholders, not real photos of the hotel; swap
+    each one out via /admin once real room photos exist."""
+    if not PIL_AVAILABLE:
+        return None
+    filename = f"demo-{secure_filename(name)}.jpg"
+    path = os.path.join(ROOM_PHOTOS_DIR, filename)
+    if os.path.exists(path):
+        return filename  # already generated once; don't redo it every boot
+    try:
+        width, height = 900, 600
+        top_color = (201, 162, 75)   # --color-accent
+        bottom_color = (139, 105, 20)  # --color-primary-dark
+        img = Image.new("RGB", (width, height), top_color)
+        draw = ImageDraw.Draw(img)
+        for y in range(height):
+            t = y / height
+            r = int(top_color[0] + (bottom_color[0] - top_color[0]) * t)
+            g = int(top_color[1] + (bottom_color[1] - top_color[1]) * t)
+            b = int(top_color[2] + (bottom_color[2] - top_color[2]) * t)
+            draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+        def load_font(size):
+            for candidate in (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ):
+                if os.path.exists(candidate):
+                    return ImageFont.truetype(candidate, size)
+            try:
+                return ImageFont.load_default(size=size)
+            except TypeError:
+                return ImageFont.load_default()
+
+        title_font = load_font(72)
+        sub_font = load_font(28)
+
+        title = f"Room {name}"
+        bbox = draw.textbbox((0, 0), title, font=title_font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((width - tw) / 2, height / 2 - th), title, font=title_font, fill="white")
+
+        sub = f"{floor} · Demo photo — replace in /admin"
+        bbox2 = draw.textbbox((0, 0), sub, font=sub_font)
+        sw, sh = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
+        draw.text(((width - sw) / 2, height / 2 + th - 10), sub, font=sub_font, fill=(255, 255, 255, 220))
+
+        img.save(path, "JPEG", quality=85)
+        return filename
+    except Exception:
+        return None
 
 
 def get_db():
@@ -102,12 +189,18 @@ def init_db():
             ),
         )
 
-    cur.execute("SELECT COUNT(*) FROM rooms_display")
-    if cur.fetchone()[0] == 0:
-        for name, floor, price in [("A1", "Ground Floor", 20000), ("A2", "Ground Floor", 20000), ("A3", "Ground Floor", 20000)]:
+    # Insert any demo room not already present (by name), instead of only
+    # seeding on a brand-new database — this tops up a site.db that was
+    # created by an earlier version of the app (e.g. one that only had
+    # A1-A3) instead of silently leaving it short. Existing rooms, and any
+    # photo an admin has already uploaded, are left completely alone.
+    existing_names = {row["name"] for row in cur.execute("SELECT name FROM rooms_display").fetchall()}
+    for name, floor, price in SEED_ROOMS:
+        if name not in existing_names:
+            photo_filename = generate_placeholder_photo(name, floor)
             cur.execute(
-                "INSERT INTO rooms_display (name, floor, price_per_night, photo_filename) VALUES (?, ?, ?, NULL)",
-                (name, floor, price),
+                "INSERT INTO rooms_display (name, floor, price_per_night, photo_filename) VALUES (?, ?, ?, ?)",
+                (name, floor, price, photo_filename),
             )
 
     cur.execute("SELECT COUNT(*) FROM admin_users")
@@ -366,6 +459,64 @@ def admin_add_room():
     conn.commit()
     conn.close()
     flash(f"Room '{name}' added.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/rooms/<int:room_id>/delete", methods=["POST"])
+@admin_login_required
+def admin_delete_room(room_id):
+    """Remove a room from the public site — e.g. one of the seeded demo
+    rooms you don't actually have. This only affects this site's own
+    rooms_display table; it has no effect on the front-desk app's room
+    catalog. Also deletes its photo file from disk, if it has one."""
+    conn = get_db()
+    room = conn.execute("SELECT * FROM rooms_display WHERE id = ?", (room_id,)).fetchone()
+    if room is None:
+        conn.close()
+        flash("Room not found.", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    if room["photo_filename"]:
+        photo_path = os.path.join(ROOM_PHOTOS_DIR, room["photo_filename"])
+        if os.path.exists(photo_path):
+            try:
+                os.remove(photo_path)
+            except OSError:
+                pass
+
+    conn.execute("DELETE FROM rooms_display WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Room '{room['name']}' deleted from the website.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/rooms/<int:room_id>/remove-photo", methods=["POST"])
+@admin_login_required
+def admin_remove_room_photo(room_id):
+    """Clear a room's photo (e.g. a seeded demo placeholder) so the card
+    falls back to the plain CSS placeholder, without deleting the room
+    itself. Deletes the old file from disk too."""
+    conn = get_db()
+    room = conn.execute("SELECT * FROM rooms_display WHERE id = ?", (room_id,)).fetchone()
+    if room is None:
+        conn.close()
+        flash("Room not found.", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    if room["photo_filename"]:
+        photo_path = os.path.join(ROOM_PHOTOS_DIR, room["photo_filename"])
+        if os.path.exists(photo_path):
+            try:
+                os.remove(photo_path)
+            except OSError:
+                pass
+        conn.execute("UPDATE rooms_display SET photo_filename = NULL WHERE id = ?", (room_id,))
+        conn.commit()
+        flash(f"Photo removed from '{room['name']}'.", "success")
+    else:
+        flash(f"'{room['name']}' has no photo to remove.", "error")
+    conn.close()
     return redirect(url_for("admin_dashboard"))
 
 

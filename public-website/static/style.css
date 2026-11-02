@@ -82,6 +82,8 @@ a { color: var(--color-primary); }
 .btn-call:hover { box-shadow: 0 6px 18px rgba(169, 128, 46, 0.35); }
 .btn-outline { background: var(--color-surface); color: var(--color-heading); border: 1px solid var(--color-border); }
 .btn-outline:hover { border-color: var(--color-accent); }
+.btn-danger { background: linear-gradient(135deg, #A3492B 0%, #7a3420 100%); color: #fff; }
+.btn-danger:hover { box-shadow: 0 4px 12px rgba(163, 73, 43, 0.3); }
 .btn-small { padding: 10px 18px; font-size: 13px; min-height: 40px; }
 
 /* Sections */

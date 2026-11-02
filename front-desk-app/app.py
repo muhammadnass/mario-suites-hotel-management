@@ -38,13 +38,24 @@ HOTEL_NAME = "Mario Suites Ltd"
 HOTEL_ADDRESS = "23/24 Danbare Layin Mobil, Opp. BUK New Site, Kano, Nigeria"
 HOTEL_PHONES = ["+234 701 254 9345", "+234 814 708 5305"]
 
-# Rooms seeded the very first time the app runs. Change prices any time
-# afterwards from the Rooms page (Admin or Manager only); add more rooms the
-# same way — this list is only used once, to set up a brand new database.
+# Demo rooms, named in the hotel's own A/B-plus-floor convention. These are
+# seeded automatically (any entry not already in the database, by room
+# number, is added — so this also safely tops up a database that already
+# exists from an earlier run) purely so there's something realistic to
+# click through before the hotel goes live. Rename, reprice, add, or
+# delete any of them freely from the Rooms page (Admin/Manager only) —
+# none of this is hard-coded elsewhere.
 SEED_ROOMS = [
     ("A1", "Ground Floor", 20000),
     ("A2", "Ground Floor", 20000),
     ("A3", "Ground Floor", 20000),
+    ("A4", "Ground Floor", 20000),
+    ("A5", "Ground Floor", 20000),
+    ("B1", "First Floor", 25000),
+    ("B2", "First Floor", 25000),
+    ("B3", "First Floor", 25000),
+    ("B4", "First Floor", 25000),
+    ("B5", "First Floor", 25000),
 ]
 
 
@@ -187,10 +198,16 @@ def init_db():
         )
     """)
 
-    # Seed rooms only the first time the app runs.
-    cur.execute("SELECT COUNT(*) FROM rooms")
-    if cur.fetchone()[0] == 0:
-        for room_number, floor, price in SEED_ROOMS:
+    # Seed demo rooms — insert any SEED_ROOMS entry not already present (by
+    # room number), rather than only on a brand-new database. That way,
+    # re-running this on a database from an earlier version of the app
+    # (e.g. one that only had A1-A3) tops it up with the rest instead of
+    # silently doing nothing.
+    existing_room_numbers = {
+        row["room_number"] for row in cur.execute("SELECT room_number FROM rooms").fetchall()
+    }
+    for room_number, floor, price in SEED_ROOMS:
+        if room_number not in existing_room_numbers:
             cur.execute(
                 "INSERT INTO rooms (room_number, floor, price_per_night, status) VALUES (?, ?, ?, 'available')",
                 (room_number, floor, price),
@@ -494,6 +511,51 @@ def profile():
         return redirect(url_for("profile"))
 
     return render_template("profile.html")
+
+
+@app.route("/admin/reset-demo-data", methods=["POST"])
+@roles_required("admin")
+def reset_demo_data():
+    """Wipe every guest, booking, reservation, payment and store-credit
+    record — meant to be run once, by the Admin, right before the hotel
+    starts using the software for real, to clear out anything created
+    while testing/demoing. Deliberately leaves the room catalog (so real
+    room names/prices configured during testing aren't lost) and every
+    user account (so nobody gets locked out) untouched — delete/edit
+    rooms individually from the Rooms page if some were only ever demo
+    rooms. Requires typing the exact confirmation phrase to reduce the
+    chance of an accidental click wiping real guest data later."""
+    confirmation = (request.form.get("confirmation") or "").strip()
+    if confirmation != "WIPE ALL DATA":
+        flash('Typed confirmation did not match — type exactly "WIPE ALL DATA" to proceed. Nothing was deleted.', "error")
+        return redirect(url_for("profile"))
+
+    conn = get_db()
+    counts = {
+        "payments": conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0],
+        "guest_credits": conn.execute("SELECT COUNT(*) FROM guest_credits").fetchone()[0],
+        "bookings": conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0],
+        "reservations": conn.execute("SELECT COUNT(*) FROM reservations").fetchone()[0],
+        "guests": conn.execute("SELECT COUNT(*) FROM guests").fetchone()[0],
+    }
+    conn.execute("DELETE FROM payments")
+    conn.execute("DELETE FROM guest_credits")
+    conn.execute("DELETE FROM bookings")
+    conn.execute("DELETE FROM reservations")
+    conn.execute("DELETE FROM guests")
+    # Every room goes back to available, since any "occupied" status only
+    # existed because of a booking that's now gone.
+    conn.execute("UPDATE rooms SET status = 'available'")
+    conn.commit()
+    conn.close()
+
+    flash(
+        "All demo data wiped: {guests} guest(s), {bookings} booking(s), {reservations} reservation(s), "
+        "{payments} payment(s) and {guest_credits} store-credit record(s) deleted. Rooms and user accounts "
+        "were kept — all rooms are now marked available. The hotel is ready for real guests.".format(**counts),
+        "success",
+    )
+    return redirect(url_for("profile"))
 
 
 # ---------------------------------------------------------------------------
@@ -1950,6 +2012,44 @@ def edit_room(room_id):
     conn.commit()
     conn.close()
     flash("Room updated.", "success")
+    return redirect(url_for("rooms"))
+
+
+@app.route("/rooms/<int:room_id>/delete", methods=["POST"])
+@roles_required("admin", "manager")
+def delete_room(room_id):
+    """Remove a room — e.g. a demo room that isn't a real room at the
+    hotel. Refuses if any booking or reservation (past or present) still
+    references it, since deleting would orphan that history; edit the room
+    instead (rename/reprice) if it needs to stay for record-keeping."""
+    conn = get_db()
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    if room is None:
+        conn.close()
+        flash("Room not found.", "error")
+        return redirect(url_for("rooms"))
+
+    booking_count = conn.execute(
+        "SELECT COUNT(*) FROM bookings WHERE room_id = ?", (room_id,)
+    ).fetchone()[0]
+    reservation_count = conn.execute(
+        "SELECT COUNT(*) FROM reservations WHERE room_id = ?", (room_id,)
+    ).fetchone()[0]
+
+    if booking_count or reservation_count:
+        conn.close()
+        flash(
+            f"Can't delete '{room['room_number']}' — it has {booking_count} booking(s) and "
+            f"{reservation_count} reservation(s) on record. Rename or reprice it instead, or use "
+            "'Reset Demo Data' on your Profile page first if this is still demo data.",
+            "error",
+        )
+        return redirect(url_for("rooms"))
+
+    conn.execute("DELETE FROM rooms WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Room '{room['room_number']}' deleted.", "success")
     return redirect(url_for("rooms"))
 
 
