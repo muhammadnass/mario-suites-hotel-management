@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Mario Suites Ltd{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+{# Icons: what shows in a browser tab, and what "Add to Home Screen" uses
+   instead of falling back to a plain letter. Without apple-touch-icon,
+   iOS generates its own tile from a screenshot of the page, which is
+   where the bare "M" was coming from. #}
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+<meta name="theme-color" content="#A9802E">
+
+{# iOS home-screen behavior: open full-screen like an app (no Safari
+   chrome) and use a short label under the icon instead of the full page
+   title ("Mario Suites Ltd — Kano", etc.). #}
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mario Suites">
 </head>
 <body>
 
