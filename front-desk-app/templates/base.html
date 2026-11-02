@@ -32,6 +32,7 @@
         {% endif %}
         {% if is_admin %}
         <a href="{{ url_for('users_page') }}" class="{{ 'active' if request.endpoint in ['users_page','add_user','reset_password'] }}">Users</a>
+        <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint in ['settings_page','sync_now'] }}">Settings</a>
         {% endif %}
         {% if current_username %}
         <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">Profile</a>

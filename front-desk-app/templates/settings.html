@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Settings - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Settings</h1></div>
+
+<div class="form-card-wrap">
+<div class="form-card">
+  <h2 style="margin:0;">Website availability sync</h2>
+  <p class="hint" style="margin-top:0;">
+    When configured, this computer automatically sends the room list and current occupied dates to the
+    public website whenever it has internet — right after any booking, reservation or room change, and
+    again every 5 minutes in the background. This lets a visitor to the website check which rooms look
+    free for their dates. It is a convenience signal, not a live database replica: expect a few minutes
+    of lag, and the website still can't take a real booking — a guest's stay is only confirmed once staff
+    speak to them directly (WhatsApp/phone). See the README for full setup steps.
+  </p>
+
+  <p>
+    <strong>Last synced:</strong>
+    {% if last_sync_at %}
+      {{ last_sync_at|time_ago }}
+      — status: <span style="color: {{ 'var(--color-available)' if last_sync_status == 'ok' else 'var(--color-occupied)' }};">{{ last_sync_status }}</span>
+    {% else %}
+      never
+    {% endif %}
+  </p>
+
+  <form method="post" action="{{ url_for('settings_page') }}">
+    <label>
+      Website sync URL
+      <input type="text" name="website_sync_url" value="{{ website_sync_url }}"
+             placeholder="https://mario-suites-public-website.onrender.com">
+    </label>
+    <label>
+      Website sync API key
+      <input type="password" name="website_sync_api_key" autocomplete="off"
+             placeholder="{{ 'Already set — leave blank to keep it' if has_api_key else 'Paste the SYNC_API_KEY from Render' }}">
+    </label>
+    <p class="hint">
+      Find this key in your Render dashboard: the public website's service &rarr; Environment tab &rarr;
+      <code>SYNC_API_KEY</code>. Leaving the key field blank here keeps whatever key is already saved.
+    </p>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save settings</button>
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('sync_now') }}" style="margin-top:4px;">
+    <div class="form-actions">
+      <button type="submit" class="btn btn-secondary">Sync now</button>
+    </div>
+  </form>
+</div>
+</div>
+
+{% endblock %}

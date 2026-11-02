@@ -5,6 +5,36 @@
 <section class="section">
   <div class="wrap">
     <h2 class="section-title">Our Rooms</h2>
+
+    <div class="form-card" style="max-width:640px; margin:0 auto 32px;">
+      <form method="get" action="{{ url_for('rooms_page') }}" class="form-row" style="align-items:flex-end;">
+        <label>Check-in<input type="date" name="check_in" value="{{ check_in }}"></label>
+        <label>Check-out<input type="date" name="check_out" value="{{ check_out }}"></label>
+        <button type="submit" class="btn btn-call">Check availability</button>
+      </form>
+      {% if date_error %}
+      <p style="color:#A3492B; font-size:14px; margin:10px 0 0;">{{ date_error }}</p>
+      {% endif %}
+      <p class="hint" style="font-size:13px; color:var(--color-muted); margin:10px 0 0;">
+        {% if sync_last_synced_at %}
+          Availability last confirmed {{ sync_last_synced_at|time_ago }}.
+        {% else %}
+          Availability hasn't synced from the front desk yet.
+        {% endif %}
+        This shows our best current information, not a live booking system — your stay is only
+        confirmed once we hear from you directly, so please message us on WhatsApp to lock in a room.
+      </p>
+      {% if sync_stale %}
+      <p style="background:#FBEFE9; color:#A3492B; font-size:13px; padding:10px 14px; border-radius:8px; margin:10px 0 0;">
+        This may not reflect the latest bookings — message us on WhatsApp to confirm availability.
+      </p>
+      {% endif %}
+    </div>
+
+    {% if searching %}
+    <h3 style="margin-bottom:16px;">Available for your dates</h3>
+    {% endif %}
+
     <div class="room-grid">
       {% for item in rooms_with_links %}
       {% set r = item.room %}
@@ -23,6 +53,28 @@
       </div>
       {% endfor %}
     </div>
+
+    {% if searching and unavailable_rooms %}
+    <h3 style="margin:36px 0 16px; color:var(--color-muted);">Not available for these dates</h3>
+    <div class="room-grid">
+      {% for item in unavailable_rooms %}
+      {% set r = item.room %}
+      <div class="room-card" style="opacity:0.55;">
+        {% if r['photo_filename'] %}
+        <img class="room-photo" src="{{ url_for('room_photo', filename=r['photo_filename']) }}" alt="{{ r['name'] }}" style="filter:grayscale(70%);">
+        {% else %}
+        <div class="room-photo-placeholder">{{ r['name'] }}</div>
+        {% endif %}
+        <div class="room-card-body">
+          <h3>Room {{ r['name'] }}</h3>
+          <div class="room-card-floor">{{ r['floor'] }}</div>
+          <div class="room-card-price">&#8358;{{ "{:,.0f}".format(r['price_per_night']) }} / night</div>
+          <span style="font-size:13px; font-weight:600; color:#A3492B;">Not available for these dates</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </section>
 

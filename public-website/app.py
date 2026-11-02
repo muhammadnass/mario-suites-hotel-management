@@ -21,11 +21,11 @@ Then open:    http://127.0.0.1:5001 in your browser.
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 from urllib.parse import quote, urlencode
 
-from flask import (Flask, flash, redirect, render_template, request,
+from flask import (Flask, flash, jsonify, redirect, render_template, request,
                     send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -56,6 +56,13 @@ HOTEL_NAME = "Mario Suites Ltd"
 HOTEL_LAT = 11.963389
 HOTEL_LNG = 8.432611
 ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
+# Shared secret the front-desk app must send (as the X-Sync-Key header) to
+# push room/availability data to this site — see /sync/rooms below. Set
+# this in your hosting environment (Render's render.yaml generates it
+# automatically); never hard-code a real key here. If it's unset, syncing
+# is simply turned off (the endpoint always refuses) rather than left open.
+SYNC_API_KEY = os.environ.get("SYNC_API_KEY")
 
 # Demo rooms seeded for a first look at the site — same naming/floor/price
 # convention as front-desk-app's SEED_ROOMS, so the two line up out of the
@@ -173,6 +180,36 @@ def init_db():
         )
     """)
 
+    # Date ranges a room is NOT available for, pushed from the front-desk
+    # app's /sync/rooms endpoint (see below). room_name is matched loosely
+    # against rooms_display.name, the same join-by-name convention the
+    # existing rooms_export/import feature already uses — there's no
+    # foreign key, since the two apps' databases are entirely separate.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS availability_blocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_name TEXT NOT NULL,
+            check_in TEXT NOT NULL,
+            check_out TEXT NOT NULL
+        )
+    """)
+
+    # A single-row table tracking when the last sync from the front-desk
+    # app landed, so the Rooms page can tell a visitor how fresh (or
+    # stale) the availability information is, rather than presenting it as
+    # if it were guaranteed live.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sync_meta (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_synced_at TEXT,
+            rooms_count INTEGER,
+            blocks_count INTEGER
+        )
+    """)
+    cur.execute("SELECT COUNT(*) FROM sync_meta")
+    if cur.fetchone()[0] == 0:
+        cur.execute("INSERT INTO sync_meta (id, last_synced_at, rooms_count, blocks_count) VALUES (1, NULL, 0, 0)")
+
     cur.execute("SELECT COUNT(*) FROM site_content")
     if cur.fetchone()[0] == 0:
         cur.execute(
@@ -255,15 +292,46 @@ def maps_directions_url(address):
     return "https://www.google.com/maps/dir/?" + urlencode({"api": "1", "destination": destination})
 
 
+def time_ago(timestamp_str):
+    """Render an ISO timestamp (e.g. sync_meta.last_synced_at) as a short
+    relative time like "3 minutes ago" or "2 hours ago", for the honest
+    "availability last confirmed ..." note on the Rooms page."""
+    if not timestamp_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(timestamp_str)
+    except ValueError:
+        return None
+    seconds = (datetime.now() - dt).total_seconds()
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    if seconds < 86400:
+        hours = int(seconds // 3600)
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = int(seconds // 86400)
+    return f"{days} day{'s' if days != 1 else ''} ago"
+
+
+app.jinja_env.filters["time_ago"] = time_ago
+
+
 @app.context_processor
 def inject_globals():
     content = get_site_content()
+    conn = get_db()
+    sync_row = conn.execute("SELECT * FROM sync_meta WHERE id = 1").fetchone()
+    conn.close()
     return {
         "hotel_name": HOTEL_NAME,
         "site": content,
         "wa_link": wa_link,
         "tel_link": tel_link,
         "current_admin": session.get("admin_username"),
+        "sync_meta": sync_row,
+        "sync_configured": bool(SYNC_API_KEY),
     }
 
 
@@ -310,6 +378,95 @@ def admin_logout():
 
 
 # ---------------------------------------------------------------------------
+# Sync from the front-desk app
+#
+# The front-desk app (a separate, normally-offline program on the hotel's
+# own computer) pushes its room list and currently-occupied date ranges
+# here whenever it has internet, so the Rooms page can answer "is Room X
+# free from date A to date B". This is a one-way, pull-free push: this
+# site never reaches out to the front desk (it has no way to — that PC
+# isn't reachable from the internet), it only accepts what gets sent here.
+# ---------------------------------------------------------------------------
+
+@app.route("/sync/rooms", methods=["POST"])
+def sync_rooms():
+    if not SYNC_API_KEY:
+        return jsonify({"status": "error", "error": "Sync is not configured on this site (SYNC_API_KEY is unset)."}), 503
+
+    if request.headers.get("X-Sync-Key") != SYNC_API_KEY:
+        return jsonify({"status": "error", "error": "Invalid sync key."}), 401
+
+    try:
+        payload = request.get_json(force=True, silent=False)
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict) or "rooms" not in payload or "blocks" not in payload:
+        return jsonify({"status": "error", "error": "Expected JSON body with 'rooms' and 'blocks'."}), 400
+
+    rooms = payload.get("rooms") or []
+    blocks = payload.get("blocks") or []
+    if not isinstance(rooms, list) or not isinstance(blocks, list):
+        return jsonify({"status": "error", "error": "'rooms' and 'blocks' must both be lists."}), 400
+
+    conn = get_db()
+
+    # Upsert each room by name — same behavior as the existing rooms_export
+    # JSON import: update floor/price for a name already here, leave its
+    # photo untouched; insert new names with a fresh placeholder photo,
+    # same as the initial demo seeding does. Rooms NOT present in this
+    # payload are left alone (never deleted) — an admin may have added a
+    # website-only room that the front desk doesn't know about.
+    existing_names = {row["name"]: row["id"] for row in conn.execute("SELECT id, name FROM rooms_display").fetchall()}
+    for entry in rooms:
+        if not isinstance(entry, dict):
+            continue
+        name = (entry.get("name") or "").strip()
+        floor = (entry.get("floor") or "Ground Floor").strip()
+        price = entry.get("price_per_night")
+        if not name or price is None:
+            continue
+        if name in existing_names:
+            conn.execute(
+                "UPDATE rooms_display SET floor = ?, price_per_night = ? WHERE id = ?",
+                (floor, price, existing_names[name]),
+            )
+        else:
+            photo_filename = generate_placeholder_photo(name, floor)
+            conn.execute(
+                "INSERT INTO rooms_display (name, floor, price_per_night, photo_filename) VALUES (?, ?, ?, ?)",
+                (name, floor, price, photo_filename),
+            )
+
+    # Availability blocks are a full snapshot each time (simplest correct
+    # approach — the front desk always sends its complete current picture,
+    # not a diff), so replace the whole table rather than trying to merge.
+    conn.execute("DELETE FROM availability_blocks")
+    blocks_inserted = 0
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        room_name = (b.get("room_name") or "").strip()
+        check_in = (b.get("check_in") or "").strip()
+        check_out = (b.get("check_out") or "").strip()
+        if not (room_name and check_in and check_out):
+            continue
+        conn.execute(
+            "INSERT INTO availability_blocks (room_name, check_in, check_out) VALUES (?, ?, ?)",
+            (room_name, check_in, check_out),
+        )
+        blocks_inserted += 1
+
+    conn.execute(
+        "UPDATE sync_meta SET last_synced_at = ?, rooms_count = ?, blocks_count = ? WHERE id = 1",
+        (datetime.now().isoformat(timespec="seconds"), len(rooms), blocks_inserted),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "ok", "rooms_synced": len(rooms), "blocks_synced": blocks_inserted})
+
+
+# ---------------------------------------------------------------------------
 # Public pages
 # ---------------------------------------------------------------------------
 
@@ -329,16 +486,90 @@ def rooms_page():
     conn = get_db()
     rows = conn.execute("SELECT * FROM rooms_display ORDER BY floor, name").fetchall()
     content = get_site_content(conn)
+
+    check_in = (request.args.get("check_in") or "").strip()
+    check_out = (request.args.get("check_out") or "").strip()
+    searching = False
+    date_error = None
+
+    if check_in and check_out:
+        try:
+            ci = date.fromisoformat(check_in)
+            co = date.fromisoformat(check_out)
+            if co <= ci:
+                date_error = "Check-out must be after check-in."
+            else:
+                searching = True
+        except ValueError:
+            date_error = "Please enter valid dates."
+
+    available_rooms = []
+    unavailable_rooms = []
+
+    if searching:
+        # Pull every block once and test each room against it in Python —
+        # simpler and plenty fast for a hotel-sized room list, rather than
+        # a fiddly date-range SQL join. A room is unavailable for the
+        # requested range if ANY block for it overlaps that range (the
+        # standard interval-overlap test: block starts before the
+        # requested check-out AND ends after the requested check-in).
+        blocks = conn.execute("SELECT room_name, check_in, check_out FROM availability_blocks").fetchall()
+        blocked_names = set()
+        for b in blocks:
+            try:
+                b_in = date.fromisoformat(b["check_in"])
+                b_out = date.fromisoformat(b["check_out"])
+            except ValueError:
+                continue
+            if b_in < co and b_out > ci:
+                blocked_names.add(b["room_name"])
+
+        date_label = f"{ci.strftime('%d %b')} to {co.strftime('%d %b %Y')}"
+        for r in rows:
+            if r["name"] in blocked_names:
+                unavailable_rooms.append({"room": r})
+            else:
+                message = f"Hi, I'd like to book Room {r['name']} at {HOTEL_NAME} from {date_label}."
+                available_rooms.append({
+                    "room": r,
+                    "book_link": wa_link(content["whatsapp_number"], message),
+                })
+    else:
+        # No date range given (or it was invalid) — just show every room,
+        # the same plain list the page always showed before this feature.
+        for r in rows:
+            message = f"Hi, I'd like to book Room {r['name']} at {HOTEL_NAME}."
+            available_rooms.append({
+                "room": r,
+                "book_link": wa_link(content["whatsapp_number"], message),
+            })
+
+    sync_row = conn.execute("SELECT * FROM sync_meta WHERE id = 1").fetchone()
     conn.close()
 
-    rooms_with_links = []
-    for r in rows:
-        message = f"Hi, I'd like to book Room {r['name']} at {HOTEL_NAME}."
-        rooms_with_links.append({
-            "room": r,
-            "book_link": wa_link(content["whatsapp_number"], message),
-        })
-    return render_template("rooms.html", rooms_with_links=rooms_with_links)
+    # Flag the availability info as possibly stale if it's never synced, or
+    # hasn't synced in the last 6 hours — the front-desk PC may simply have
+    # been offline that whole time, so this isn't necessarily broken, just
+    # worth a visitor double-checking by WhatsApp before counting on it.
+    stale = True
+    if sync_row and sync_row["last_synced_at"]:
+        try:
+            age_hours = (datetime.now() - datetime.fromisoformat(sync_row["last_synced_at"])).total_seconds() / 3600
+            stale = age_hours > 6
+        except ValueError:
+            stale = True
+
+    return render_template(
+        "rooms.html",
+        rooms_with_links=available_rooms,  # unfiltered view keeps using this name, unchanged from before
+        searching=searching,
+        unavailable_rooms=unavailable_rooms,
+        check_in=check_in,
+        check_out=check_out,
+        date_error=date_error,
+        sync_last_synced_at=sync_row["last_synced_at"] if sync_row else None,
+        sync_stale=stale,
+    )
 
 
 @app.route("/location")

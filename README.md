@@ -206,7 +206,60 @@ Log in at **/admin** with the seeded account **`admin` / `admin123`** (change th
 
 ---
 
-## 4. About the Google Maps listing
+## 4. Live availability sync between the two apps
+
+On top of the manual rooms-export JSON file (§2.7/§3.3), the front-desk app can automatically push a **live-ish
+availability picture** to the public website, so a visitor can pick check-in/check-out dates on the Rooms page
+and see which rooms currently look free — without you touching anything.
+
+**What it actually does:** whenever the front-desk PC has internet, it sends the website its full room list plus
+every date range a room is currently blocked for (every checked-in booking's stay, and every pending/confirmed
+reservation). It does this right after any booking, checkout, reservation or room change, and again every 5
+minutes in the background as a safety net, so even on a quiet day the website eventually catches up if the PC
+regained internet after being offline.
+
+**What it deliberately does NOT do** — please don't oversell this to guests:
+- It is **not instant**. Expect a few minutes of lag in the normal case, and longer if the front-desk PC was
+  offline when something changed — it'll catch up on its next successful sync, automatically.
+- The website still **cannot take a real booking or payment**. A visitor's "available" result is informational
+  only — the actual stay is always confirmed by a staff member, via the WhatsApp/call buttons already on the
+  site. There is no double-booking protection beyond "whatever the front desk last reported."
+- If the front-desk PC is simply never online, this feature just never activates — the website falls back to
+  showing the full room list with no availability filtering, exactly as it did before this feature existed.
+
+**One-time setup, after you've deployed the website to Render (§3.2):**
+
+1. In the Render dashboard, open the `mario-suites-public-website` service → **Environment** tab. You'll see
+   `SYNC_API_KEY` already there with a long random value — Render generated it automatically from `render.yaml`
+   when the service was created. Copy that value.
+2. On the front-desk app, log in as **Admin** and open **Settings** in the nav.
+3. Paste your website's live URL into **Website sync URL** (e.g. `https://mario-suites-public-website.onrender.com`
+   — no trailing slash), and paste the copied value into **Website sync API key**. Click **Save settings**.
+4. Click **Sync now** to confirm it connects. "Last synced" should change to "just now" with status "ok". If it
+   doesn't, see the troubleshooting below.
+
+From then on, syncing happens automatically — there's nothing to click day-to-day.
+
+**Troubleshooting the "Last synced" status on the Settings page:**
+
+- **"Not configured"** — the URL or API key field is empty. Fill both in and save.
+- **"Website rejected the request (check the API key)"** — the key saved on the front-desk app doesn't match
+  `SYNC_API_KEY` on Render. Re-copy it from Render's Environment tab (it may have regenerated if the service was
+  recreated) and save it again in Settings.
+- **"Website hasn't configured its sync key yet"** — `SYNC_API_KEY` is missing on the Render side. Check the
+  Environment tab; if it's genuinely absent, add it manually (any long random string) and redeploy.
+- **"No internet connection (will retry automatically)"** — the normal, expected message whenever the front-desk
+  PC has no internet at that moment. Nothing to fix; it'll sync next time it's online.
+- **"Website took too long to respond (will retry automatically)"** — likely Render's free tier "spinning up" a
+  sleeping instance (can take ~50 seconds the first time after inactivity — see §3.2). It should succeed on the
+  very next automatic retry a few minutes later, or click "Sync now" again once the site has had a few seconds
+  to wake up (visiting the live URL in a browser first will also wake it).
+- The admin dashboard on the website itself also shows a **"Live sync is not configured"** banner if
+  `SYNC_API_KEY` was never set there at all — a second place to notice this before guests do.
+
+---
+
+## 5. About the Google Maps listing
 
 You shared this Google Maps link for the hotel: `https://maps.app.goo.gl/xM8kUuQAM8WzVrY99?g_st=ic`. **This could not be fetched automatically** — Google Maps short links aren't reachable by the tools used to build this project, so no business details or photos were pulled from it. The address and phone numbers you provided directly were used instead:
 
@@ -217,7 +270,7 @@ You shared this Google Maps link for the hotel: `https://maps.app.goo.gl/xM8kUuQ
 
 ---
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 **"Port already in use" / app won't start**
 Another program (or a previous copy of the app) is already using port 5000 (front-desk) or 5001 (website). Close it, or run on a different port: `python app.py` → edit the `app.run(..., port=5000)` line at the bottom of `app.py` to a free port.

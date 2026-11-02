@@ -4,6 +4,26 @@
 
 <section class="section">
   <div class="wrap">
+
+    {% if not sync_configured %}
+    <div style="background:#FBEFE9; color:#A3492B; padding:14px 18px; border-radius:10px; margin-bottom:24px; font-size:14px;">
+      <strong>Live sync is not configured</strong> — set the <code>SYNC_API_KEY</code> environment variable in your
+      hosting (e.g. the Render dashboard's Environment tab) so the front-desk app can push room availability here.
+      See the README's "Live availability sync" section for the exact steps.
+    </div>
+    {% else %}
+    <div style="background:var(--color-bg-alt); color:var(--color-heading); padding:14px 18px; border-radius:10px; margin-bottom:24px; font-size:14px;">
+      <strong>Front-desk sync:</strong>
+      {% if sync_meta and sync_meta['last_synced_at'] %}
+        last received {{ sync_meta['last_synced_at']|time_ago }}
+        ({{ sync_meta['rooms_count'] }} room(s), {{ sync_meta['blocks_count'] }} occupied date-range(s)).
+      {% else %}
+        no sync received yet — on the front-desk app, go to Settings and paste in this site's URL and the
+        <code>SYNC_API_KEY</code> value, then click "Sync now".
+      {% endif %}
+    </div>
+    {% endif %}
+
     <h2 class="section-title">Site Content</h2>
 
     <form class="form-card" method="post" action="{{ url_for('admin_update_content') }}">

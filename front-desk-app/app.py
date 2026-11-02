@@ -16,6 +16,10 @@ run this permanently in the background on Windows via NSSM.
 import json
 import os
 import sqlite3
+import threading
+import time as time_module
+import urllib.error
+import urllib.request
 from datetime import date, datetime
 from datetime import time as dtime
 from functools import wraps
@@ -198,6 +202,17 @@ def init_db():
         )
     """)
 
+    # Simple key/value store for app-wide settings — currently just the
+    # website sync config (see "Website sync" section below). A plain
+    # key/value table is overkill-proof: adding a new setting later never
+    # needs a schema migration.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
     # Seed demo rooms — insert any SEED_ROOMS entry not already present (by
     # room number), rather than only on a brand-new database. That way,
     # re-running this on a database from an earlier version of the app
@@ -259,7 +274,32 @@ def format_dt_display(value):
     return dt.strftime("%d %b %Y")
 
 
+def format_time_ago(value):
+    """Jinja filter: render an ISO timestamp (e.g. a sync's last_sync_at)
+    as a short relative time like "3 minutes ago" or "2 hours ago"."""
+    if not value:
+        return "never"
+    try:
+        dt = parse_flexible_datetime(value)
+    except ValueError:
+        return value
+    seconds = (datetime.now() - dt).total_seconds()
+    if seconds < 0:
+        return "just now"
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    if seconds < 86400:
+        hours = int(seconds // 3600)
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = int(seconds // 86400)
+    return f"{days} day{'s' if days != 1 else ''} ago"
+
+
 app.jinja_env.filters["fmt_dt"] = format_dt_display
+app.jinja_env.filters["time_ago"] = format_time_ago
 
 
 # ---------------------------------------------------------------------------
@@ -559,6 +599,62 @@ def reset_demo_data():
 
 
 # ---------------------------------------------------------------------------
+# Settings (admin-only: website sync configuration)
+# ---------------------------------------------------------------------------
+
+@app.route("/settings", methods=["GET", "POST"])
+@roles_required("admin")
+def settings_page():
+    conn = get_db()
+
+    if request.method == "POST":
+        website_sync_url = (request.form.get("website_sync_url") or "").strip().rstrip("/")
+        website_sync_api_key = (request.form.get("website_sync_api_key") or "").strip()
+
+        set_setting(conn, "website_sync_url", website_sync_url)
+        # Only overwrite the stored API key if a new one was actually typed
+        # — the field is shown blank (password-style) for security, so an
+        # empty submission means "leave it as it is", not "clear it".
+        if website_sync_api_key:
+            set_setting(conn, "website_sync_api_key", website_sync_api_key)
+        conn.commit()
+        conn.close()
+        flash("Settings saved.", "success")
+        return redirect(url_for("settings_page"))
+
+    website_sync_url = get_setting(conn, "website_sync_url", "")
+    has_api_key = bool(get_setting(conn, "website_sync_api_key", ""))
+    last_sync_status = get_setting(conn, "last_sync_status")
+    last_sync_at = get_setting(conn, "last_sync_at")
+    conn.close()
+
+    return render_template(
+        "settings.html",
+        website_sync_url=website_sync_url,
+        has_api_key=has_api_key,
+        last_sync_status=last_sync_status,
+        last_sync_at=last_sync_at,
+    )
+
+
+@app.route("/settings/sync-now", methods=["POST"])
+@roles_required("admin")
+def sync_now():
+    """Trigger an immediate sync attempt and wait for the result, so the
+    Admin gets instant feedback (unlike the background loop/post-booking
+    syncs, which are fire-and-forget)."""
+    ok = sync_to_website()
+    conn = get_db()
+    status = get_setting(conn, "last_sync_status")
+    conn.close()
+    if ok:
+        flash(f"Synced successfully: {status}.", "success")
+    else:
+        flash(f"Sync did not complete: {status}.", "error")
+    return redirect(url_for("settings_page"))
+
+
+# ---------------------------------------------------------------------------
 # Shared helpers: nights, money, payments, store credit
 # ---------------------------------------------------------------------------
 
@@ -746,6 +842,163 @@ def apply_guest_credit(conn, guest_id, amount):
         remaining_to_apply -= take
         applied_total += take
     return applied_total
+
+
+# ---------------------------------------------------------------------------
+# Website sync
+#
+# Pushes the room list and current occupied date-ranges to the public
+# website (public-website/app.py, hosted separately on Render) whenever
+# this PC has internet, so a visitor can see a same-day availability
+# calendar. This is a convenience signal, not a live database replica —
+# see the Settings page and the README for the honest limitations (a few
+# minutes of lag, and the website still can't take a real booking; a
+# guest's final booking is always confirmed by staff via WhatsApp/phone).
+# ---------------------------------------------------------------------------
+
+def get_setting(conn, key, default=None):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row is not None else default
+
+
+def set_setting(conn, key, value):
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (key, value),
+    )
+
+
+def build_sync_payload(conn):
+    """Build the JSON payload describing the current room list and every
+    date-range a room is NOT available for: every currently checked-in
+    booking (room physically occupied through its expected check-out) plus
+    every pending/confirmed reservation (room already spoken for, even
+    though no guest has arrived yet). Dates are plain YYYY-MM-DD — the
+    website only needs day-level granularity for its availability search,
+    not exact check-in/out times."""
+    rooms = conn.execute("SELECT room_number, floor, price_per_night FROM rooms ORDER BY floor, room_number").fetchall()
+
+    blocks = []
+
+    checked_in_bookings = conn.execute(
+        """SELECT b.check_in, b.expected_check_out, r.room_number
+           FROM bookings b JOIN rooms r ON r.id = b.room_id
+           WHERE b.status = 'checked_in'"""
+    ).fetchall()
+    for b in checked_in_bookings:
+        try:
+            check_in_date = parse_flexible_datetime(b["check_in"]).date().isoformat()
+            check_out_date = parse_flexible_datetime(b["expected_check_out"]).date().isoformat()
+        except ValueError:
+            continue
+        blocks.append({"room_name": b["room_number"], "check_in": check_in_date, "check_out": check_out_date})
+
+    active_reservations = conn.execute(
+        """SELECT rv.check_in, rv.expected_check_out, r.room_number
+           FROM reservations rv JOIN rooms r ON r.id = rv.room_id
+           WHERE rv.status IN ('pending', 'confirmed')"""
+    ).fetchall()
+    for rv in active_reservations:
+        try:
+            check_in_date = parse_flexible_datetime(rv["check_in"]).date().isoformat()
+            check_out_date = parse_flexible_datetime(rv["expected_check_out"]).date().isoformat()
+        except ValueError:
+            continue
+        blocks.append({"room_name": rv["room_number"], "check_in": check_in_date, "check_out": check_out_date})
+
+    return {
+        "rooms": [
+            {"name": r["room_number"], "floor": r["floor"], "price_per_night": r["price_per_night"]}
+            for r in rooms
+        ],
+        "blocks": blocks,
+    }
+
+
+def sync_to_website(conn=None):
+    """Attempt one sync push to the public website. Safe to call anytime —
+    a hotel PC being offline is the NORMAL case here, not an error, so
+    every failure is caught and recorded rather than raised. Returns True
+    on a confirmed successful sync, False otherwise (including "not
+    configured yet", which is not treated as an error state)."""
+    close_after = conn is None
+    conn = conn or get_db()
+    try:
+        url = (get_setting(conn, "website_sync_url") or "").strip().rstrip("/")
+        api_key = (get_setting(conn, "website_sync_api_key") or "").strip()
+
+        if not url or not api_key:
+            set_setting(conn, "last_sync_status", "Not configured")
+            set_setting(conn, "last_sync_at", datetime.now().isoformat(timespec="seconds"))
+            conn.commit()
+            return False
+
+        payload = build_sync_payload(conn)
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{url}/sync/rooms",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json", "X-Sync-Key": api_key},
+        )
+
+        status = "error"
+        try:
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                if resp.status == 200 and body.get("status") == "ok":
+                    status = "ok"
+                else:
+                    status = f"Website returned an unexpected response (HTTP {resp.status})"
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                status = "Website rejected the request (check the API key)"
+            elif e.code == 503:
+                status = "Website hasn't configured its sync key yet"
+            else:
+                status = f"Website returned an error (HTTP {e.code})"
+        except urllib.error.URLError:
+            # Covers "no internet", DNS failure, connection refused, the
+            # website being asleep with no response, etc. — the normal
+            # case most of the time this PC isn't online.
+            status = "No internet connection (will retry automatically)"
+        except TimeoutError:
+            status = "Website took too long to respond (will retry automatically)"
+        except (ValueError, json.JSONDecodeError):
+            status = "Website sent back something unexpected"
+
+        set_setting(conn, "last_sync_status", status)
+        set_setting(conn, "last_sync_at", datetime.now().isoformat(timespec="seconds"))
+        conn.commit()
+        return status == "ok"
+    except Exception as e:  # noqa: BLE001 - a sync attempt must never crash the caller
+        try:
+            set_setting(conn, "last_sync_status", f"Unexpected error: {e}")
+            set_setting(conn, "last_sync_at", datetime.now().isoformat(timespec="seconds"))
+            conn.commit()
+        except Exception:
+            pass
+        return False
+    finally:
+        if close_after:
+            conn.close()
+
+
+def trigger_async_sync():
+    """Fire a sync attempt in the background without making the current
+    request wait on a network call that might time out. Called right
+    after any booking/reservation/room change that affects availability."""
+    threading.Thread(target=sync_to_website, daemon=True).start()
+
+
+def background_sync_loop():
+    """Runs for the lifetime of the app: retries a sync every 5 minutes so
+    that even without any booking activity, the website eventually catches
+    up once this PC regains internet."""
+    while True:
+        time_module.sleep(300)
+        sync_to_website()
 
 
 # ---------------------------------------------------------------------------
@@ -1164,6 +1417,7 @@ def new_booking():
 
         conn.commit()
         conn.close()
+        trigger_async_sync()  # room just went from available to occupied
 
         credit_note = f" ₦{applied_credit:,.0f} store credit applied." if applied_credit > 0 else ""
         if status == "paid":
@@ -1252,6 +1506,7 @@ def extend_booking(booking_id):
         refresh_payment_status(conn, booking_id, new_total)
         conn.commit()
         conn.close()
+        trigger_async_sync()  # expected check-out date changed
 
         flash(
             f"Stay extended by {added_nights} night(s). New total: ₦{new_total:,.0f} "
@@ -1542,6 +1797,7 @@ def checkout_booking(booking_id):
         conn.execute("UPDATE rooms SET status = 'available' WHERE id = ?", (booking["room_id"],))
         conn.commit()
         conn.close()
+        trigger_async_sync()  # room just became available again
 
         if refund_amount > 0:
             flash(f"Guest checked out. Refund due: ₦{refund_amount:,.0f}.", "success")
@@ -1647,6 +1903,7 @@ def cancel_booking(booking_id):
         conn.execute("UPDATE rooms SET status = 'available' WHERE id = ?", (booking["room_id"],))
         conn.commit()
         conn.close()
+        trigger_async_sync()  # room just became available again
 
         if amount_paid_so_far > 0:
             flash(
@@ -1769,6 +2026,7 @@ def new_reservation():
         reservation_id = cur.lastrowid
         conn.commit()
         conn.close()
+        trigger_async_sync()  # room just got reserved for these dates
 
         flash(f"Reservation created for {room['room_number']}.", "success")
         return redirect(url_for("reservation_detail", reservation_id=reservation_id))
@@ -1841,6 +2099,7 @@ def cancel_reservation(reservation_id):
     conn.execute("UPDATE reservations SET status = 'cancelled' WHERE id = ?", (reservation_id,))
     conn.commit()
     conn.close()
+    trigger_async_sync()  # those dates just freed up
     flash("Reservation cancelled.", "success")
     return redirect(url_for("reservations_page"))
 
@@ -1906,6 +2165,7 @@ def checkin_from_reservation(reservation_id):
 
         conn.commit()
         conn.close()
+        trigger_async_sync()  # reservation converted into an active booking
 
         if status == "paid":
             flash("Guest checked in. Payment received in full.", "success")
@@ -1967,6 +2227,7 @@ def add_room():
     )
     conn.commit()
     conn.close()
+    trigger_async_sync()
     flash(f"Room '{room_number}' added.", "success")
     return redirect(url_for("rooms"))
 
@@ -2011,6 +2272,7 @@ def edit_room(room_id):
     )
     conn.commit()
     conn.close()
+    trigger_async_sync()
     flash("Room updated.", "success")
     return redirect(url_for("rooms"))
 
@@ -2049,6 +2311,7 @@ def delete_room(room_id):
     conn.execute("DELETE FROM rooms WHERE id = ?", (room_id,))
     conn.commit()
     conn.close()
+    trigger_async_sync()
     flash(f"Room '{room['room_number']}' deleted.", "success")
     return redirect(url_for("rooms"))
 
@@ -2074,4 +2337,11 @@ def export_rooms_json():
 
 if __name__ == "__main__":
     init_db()
+    # Start the background sync loop once — not twice. Flask's debug-mode
+    # reloader restarts this script in a child process, so without this
+    # guard the thread would start once in the parent process (which never
+    # actually serves requests) and again in the reloaded child, doubling
+    # up every sync attempt. WERKZEUG_RUN_MAIN is only set in that child.
+    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        threading.Thread(target=background_sync_loop, daemon=True).start()
     app.run(host="127.0.0.1", port=5000, debug=True)
