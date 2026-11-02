@@ -139,6 +139,15 @@ a { color: var(--color-primary); }
 .form-row label { flex: 1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
+/* The Rooms-page date search form: Check-in / Check-out / button sit on
+   one baseline on desktop. Kept as its own class (rather than an inline
+   style) so the mobile override below can actually win — align-items on
+   an inline style can't be beaten by a later stylesheet rule without
+   this separation, and inline flex-end would otherwise flip to shoving
+   every stacked field against the right edge once the layout below goes
+   to a single column, leaving a blank gap on the left. */
+.date-search-form { align-items: flex-end; }
+
 .flash-wrap { max-width: 640px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 8px; }
 .flash { padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; }
 .flash-success { background: #E7F2EB; color: #2F7D5C; }
@@ -204,6 +213,10 @@ a { color: var(--color-primary); }
   .contact-card { padding: 20px; }
   .form-card { padding: 20px; margin: 16px auto; }
   .form-row { flex-direction: column; gap: 0; }
+  .form-row label { width: 100%; }
+  .date-search-form { align-items: stretch; }
+  .date-search-form label, .date-search-form input, .date-search-form button { width: 100%; }
+  .date-search-form label { margin-bottom: 12px; }
   .admin-room-row { grid-template-columns: 1fr; }
 
   /* Reveal the sticky WhatsApp/Call bar and make room for it so the

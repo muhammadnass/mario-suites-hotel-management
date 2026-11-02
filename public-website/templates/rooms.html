@@ -7,7 +7,7 @@
     <h2 class="section-title">Our Rooms</h2>
 
     <div class="form-card" style="max-width:640px; margin:0 auto 32px;">
-      <form method="get" action="{{ url_for('rooms_page') }}" class="form-row" style="align-items:flex-end;">
+      <form method="get" action="{{ url_for('rooms_page') }}" class="form-row date-search-form">
         <label>Check-in<input type="date" name="check_in" value="{{ check_in }}"></label>
         <label>Check-out<input type="date" name="check_out" value="{{ check_out }}"></label>
         <button type="submit" class="btn btn-call">Check availability</button>

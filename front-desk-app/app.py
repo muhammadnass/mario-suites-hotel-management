@@ -611,15 +611,24 @@ def settings_page():
         website_sync_url = (request.form.get("website_sync_url") or "").strip().rstrip("/")
         website_sync_api_key = (request.form.get("website_sync_api_key") or "").strip()
 
-        set_setting(conn, "website_sync_url", website_sync_url)
-        # Only overwrite the stored API key if a new one was actually typed
-        # — the field is shown blank (password-style) for security, so an
-        # empty submission means "leave it as it is", not "clear it".
+        # Only overwrite each stored value if something was actually typed —
+        # an empty submission means "leave it as it is", not "clear it", for
+        # both fields (the API key field is blank-by-design every time it's
+        # shown, since it's a password input; the URL field can also end up
+        # submitted blank if the browser's placeholder example text is
+        # mistaken for an already-filled value, so it gets the same
+        # protection rather than silently wiping a good URL).
+        if website_sync_url:
+            set_setting(conn, "website_sync_url", website_sync_url)
         if website_sync_api_key:
             set_setting(conn, "website_sync_api_key", website_sync_api_key)
+
+        if not website_sync_url and not get_setting(conn, "website_sync_url", ""):
+            flash("Settings saved, but the Website sync URL is still empty — type it in and save again.", "error")
+        else:
+            flash("Settings saved.", "success")
         conn.commit()
         conn.close()
-        flash("Settings saved.", "success")
         return redirect(url_for("settings_page"))
 
     website_sync_url = get_setting(conn, "website_sync_url", "")
@@ -642,15 +651,19 @@ def settings_page():
 def sync_now():
     """Trigger an immediate sync attempt and wait for the result, so the
     Admin gets instant feedback (unlike the background loop/post-booking
-    syncs, which are fire-and-forget)."""
-    ok = sync_to_website()
+    syncs, which are fire-and-forget). Uses a much longer timeout than
+    those do, since a free-tier Render site that's been asleep can take
+    up to ~50 seconds to wake up and answer — an admin clicking this
+    button is deliberately waiting, so it's worth riding that out instead
+    of giving up after a few seconds."""
+    ok = sync_to_website(timeout=55)
     conn = get_db()
     status = get_setting(conn, "last_sync_status")
     conn.close()
     if ok:
         flash(f"Synced successfully: {status}.", "success")
     else:
-        flash(f"Sync did not complete: {status}.", "error")
+        flash(f"Sync did not complete: {status}. If the website had been asleep, try Sync now once more — it should be awake now.", "error")
     return redirect(url_for("settings_page"))
 
 
@@ -916,12 +929,20 @@ def build_sync_payload(conn):
     }
 
 
-def sync_to_website(conn=None):
+def sync_to_website(conn=None, timeout=10):
     """Attempt one sync push to the public website. Safe to call anytime —
     a hotel PC being offline is the NORMAL case here, not an error, so
     every failure is caught and recorded rather than raised. Returns True
     on a confirmed successful sync, False otherwise (including "not
-    configured yet", which is not treated as an error state)."""
+    configured yet", which is not treated as an error state).
+
+    `timeout` defaults to a short 10s for the background loop and the
+    fire-and-forget post-booking syncs, so a slow/offline website never
+    holds up a booking/checkout request. The "Sync now" button on the
+    Settings page passes a much longer timeout instead, since an admin
+    who clicks it is deliberately waiting for the result — this matters
+    because a free-tier Render site that's been asleep can take up to
+    ~50 seconds just to wake up and answer its first request."""
     close_after = conn is None
     conn = conn or get_db()
     try:
@@ -945,7 +966,7 @@ def sync_to_website(conn=None):
 
         status = "error"
         try:
-            with urllib.request.urlopen(req, timeout=6) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
                 if resp.status == 200 and body.get("status") == "ok":
                     status = "ok"
