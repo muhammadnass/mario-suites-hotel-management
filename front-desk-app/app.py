@@ -122,6 +122,8 @@ def init_db():
         "occupation": "TEXT",
         "next_of_kin_name": "TEXT",
         "next_of_kin_phone": "TEXT",
+        "coming_from": "TEXT",          # where the guest arrived from (city/address)
+        "going_to": "TEXT",             # where the guest is headed next
     }
     for col, col_type in new_guest_columns.items():
         if col not in existing_guest_cols:
@@ -1141,7 +1143,7 @@ def guests():
 
 
 def _guest_registration_fields(form):
-    """Pull the six optional hotel-registration fields out of a submitted
+    """Pull the eight optional hotel-registration fields out of a submitted
     form, trimmed, with nationality defaulting to 'Nigerian' when left
     blank. Shared by add_guest and edit_guest so the two stay consistent."""
     nationality = (form.get("nationality") or "").strip() or "Nigerian"
@@ -1155,6 +1157,8 @@ def _guest_registration_fields(form):
         "occupation": (form.get("occupation") or "").strip(),
         "next_of_kin_name": (form.get("next_of_kin_name") or "").strip(),
         "next_of_kin_phone": (form.get("next_of_kin_phone") or "").strip(),
+        "coming_from": (form.get("coming_from") or "").strip(),
+        "going_to": (form.get("going_to") or "").strip(),
     }
 
 
@@ -1175,12 +1179,14 @@ def add_guest():
         conn.execute(
             """INSERT INTO guests
                (name, phone, email, address, nationality, id_type, id_number,
-                occupation, next_of_kin_name, next_of_kin_phone, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                occupation, next_of_kin_name, next_of_kin_phone,
+                coming_from, going_to, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name, phone, email, address,
                 reg["nationality"], reg["id_type"], reg["id_number"],
                 reg["occupation"], reg["next_of_kin_name"], reg["next_of_kin_phone"],
+                reg["coming_from"], reg["going_to"],
                 datetime.now().isoformat(timespec="seconds"),
             ),
         )
@@ -1221,12 +1227,14 @@ def edit_guest(guest_id):
             """UPDATE guests
                SET name = ?, phone = ?, email = ?, address = ?, nationality = ?,
                    id_type = ?, id_number = ?, occupation = ?,
-                   next_of_kin_name = ?, next_of_kin_phone = ?
+                   next_of_kin_name = ?, next_of_kin_phone = ?,
+                   coming_from = ?, going_to = ?
                WHERE id = ?""",
             (
                 name, phone, email, address,
                 reg["nationality"], reg["id_type"], reg["id_number"],
                 reg["occupation"], reg["next_of_kin_name"], reg["next_of_kin_phone"],
+                reg["coming_from"], reg["going_to"],
                 guest_id,
             ),
         )
@@ -1418,6 +1426,7 @@ def _manifest_bookings(conn, from_date, to_date):
     return conn.execute(
         """SELECT b.*, g.name AS guest_name, g.phone AS guest_phone,
                   g.nationality, g.id_type, g.id_number,
+                  g.coming_from, g.going_to,
                   r.room_number, r.floor
            FROM bookings b
            JOIN guests g ON g.id = b.guest_id
@@ -1479,23 +1488,35 @@ def guest_manifest_pdf():
 
     gold = colors.HexColor("#A9802E")
     brown = colors.HexColor("#5C4420")
-    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=16, textColor=brown, spaceAfter=2)
-    meta_style = ParagraphStyle("Meta", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#6b5a3a"))
+    # spaceAfter=12 (not the old 2) gives the title real breathing room above
+    # the "Period:"/"Generated:" lines — at 2pt the two blocks sat almost
+    # flush against each other, and the gap between the title's baseline
+    # and the next line's ascenders could read as a stray underline beneath
+    # the title. This is what was reported as "not properly aligned".
+    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=16, textColor=brown, spaceAfter=12)
+    meta_style = ParagraphStyle("Meta", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#6b5a3a"), spaceAfter=3)
 
     elements = [
         Paragraph(f"{HOTEL_NAME} &mdash; Guest Manifest", title_style),
         Paragraph(f"Period: {from_date} to {to_date}", meta_style),
         Paragraph(f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}", meta_style),
-        Spacer(1, 10 * mm),
+        Spacer(1, 8 * mm),
     ]
 
     if not rows:
         elements.append(Paragraph("No guests checked in during this period.", meta_style))
     else:
-        header = ["Guest", "Phone", "ID Type / No.", "Nationality", "Room",
-                   "Check-in", "Checked in by", "Check-out", "Checked out by"]
+        header = ["Guest", "Phone", "ID Type / No.", "Nationality", "Coming from", "Going to",
+                   "Room", "Check-in", "Checked in by", "Check-out", "Checked out by"]
         cell_style = ParagraphStyle("Cell", fontName="Helvetica", fontSize=8, leading=10)
-        header_style = ParagraphStyle("Head", fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.white)
+        # Header font is deliberately a touch smaller than the body text —
+        # single-word headers like "Nationality" have no space to wrap at,
+        # so without enough room they get hard-broken mid-word (e.g.
+        # "Nationalit" / "y"), which is the real cause of the misaligned
+        # look that was reported. A slightly smaller, still-bold header
+        # font plus the rebalanced column widths below keep every header
+        # on one or two clean lines instead.
+        header_style = ParagraphStyle("Head", fontName="Helvetica-Bold", fontSize=7, leading=9, textColor=colors.white)
 
         table_data = [[Paragraph(h, header_style) for h in header]]
         for b in rows:
@@ -1508,6 +1529,8 @@ def guest_manifest_pdf():
                 Paragraph(b["guest_phone"] or "—", cell_style),
                 Paragraph(id_display, cell_style),
                 Paragraph(b["nationality"] or "—", cell_style),
+                Paragraph(b["coming_from"] or "—", cell_style),
+                Paragraph(b["going_to"] or "—", cell_style),
                 Paragraph(f"{b['room_number']} ({b['floor']})", cell_style),
                 Paragraph(format_dt_display(b["check_in"]), cell_style),
                 Paragraph(b["checked_in_by"] or "—", cell_style),
@@ -1515,7 +1538,12 @@ def guest_manifest_pdf():
                 Paragraph(b["checked_out_by"] or "—", cell_style),
             ])
 
-        col_widths = [32*mm, 24*mm, 30*mm, 22*mm, 22*mm, 28*mm, 24*mm, 28*mm, 24*mm]
+        # Widths sum to 242mm, comfortably inside the ~269mm usable width
+        # on a landscape A4 page with 14mm margins, so the table never
+        # runs into or past the page edge regardless of font-rendering
+        # variance between systems.
+        col_widths = [30*mm, 18*mm, 24*mm, 22*mm, 18*mm, 14*mm,
+                      20*mm, 24*mm, 22*mm, 24*mm, 26*mm]
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), gold),

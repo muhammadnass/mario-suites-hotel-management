@@ -16,7 +16,8 @@
 <table class="table">
   <thead>
     <tr>
-      <th>Guest</th><th>Phone</th><th>ID type / no.</th><th>Nationality</th><th>Room</th>
+      <th>Guest</th><th>Phone</th><th>ID type / no.</th><th>Nationality</th>
+      <th>Coming from</th><th>Going to</th><th>Room</th>
       <th>Check-in</th><th>Checked in by</th><th>Check-out</th><th>Checked out by</th>
     </tr>
   </thead>
@@ -27,6 +28,8 @@
       <td>{{ b['guest_phone'] }}</td>
       <td>{% if b['id_type'] or b['id_number'] %}{{ b['id_type'] or '' }}{% if b['id_number'] %} &mdash; {{ b['id_number'] }}{% endif %}{% else %}&mdash;{% endif %}</td>
       <td>{{ b['nationality'] or '&mdash;' }}</td>
+      <td>{{ b['coming_from'] or '&mdash;' }}</td>
+      <td>{{ b['going_to'] or '&mdash;' }}</td>
       <td>{{ b['room_number'] }} ({{ b['floor'] }})</td>
       <td>{{ b['check_in']|fmt_dt }}</td>
       <td>{{ b['checked_in_by'] or '&mdash;' }}</td>

@@ -33,6 +33,10 @@
     <label>Next of kin — name<input type="text" name="next_of_kin_name" value="{{ form.get('next_of_kin_name','') }}"></label>
     <label>Next of kin — phone<input type="text" name="next_of_kin_phone" value="{{ form.get('next_of_kin_phone','') }}"></label>
   </div>
+  <div class="form-row">
+    <label>Coming from<input type="text" name="coming_from" value="{{ form.get('coming_from','') }}" placeholder="e.g. Lagos, Nigeria"></label>
+    <label>Going to<input type="text" name="going_to" value="{{ form.get('going_to','') }}" placeholder="e.g. Abuja, Nigeria"></label>
+  </div>
 
   <div class="form-actions">
     <a href="{{ url_for('guest_detail', guest_id=guest['id']) }}" class="btn btn-secondary">Cancel</a>

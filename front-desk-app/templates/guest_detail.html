@@ -27,6 +27,12 @@
   {% if guest['next_of_kin_name'] or guest['next_of_kin_phone'] %}
   <div><span class="detail-label">Next of kin</span><span>{{ guest['next_of_kin_name'] or '&mdash;' }}{% if guest['next_of_kin_phone'] %} ({{ guest['next_of_kin_phone'] }}){% endif %}</span></div>
   {% endif %}
+  {% if guest['coming_from'] %}
+  <div><span class="detail-label">Coming from</span><span>{{ guest['coming_from'] }}</span></div>
+  {% endif %}
+  {% if guest['going_to'] %}
+  <div><span class="detail-label">Going to</span><span>{{ guest['going_to'] }}</span></div>
+  {% endif %}
 </div>
 
 {% if credit_balance and credit_balance > 0 %}
