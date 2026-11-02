@@ -10,6 +10,30 @@
   <label>Phone number *<input type="text" name="phone" value="{{ form.get('phone','') }}" required></label>
   <label>Email<input type="email" name="email" value="{{ form.get('email','') }}"></label>
   <label>Address<textarea name="address" rows="2">{{ form.get('address','') }}</textarea></label>
+
+  <h3 style="margin:18px 0 0;">Registration details (optional)</h3>
+  <p class="hint" style="margin-top:0;">Fill in what the guest has on hand now — the rest can be added later from their profile.</p>
+
+  <div class="form-row">
+    <label>Nationality<input type="text" name="nationality" value="{{ form.get('nationality','') }}" placeholder="Nigerian"></label>
+    <label>Occupation<input type="text" name="occupation" value="{{ form.get('occupation','') }}"></label>
+  </div>
+  <div class="form-row">
+    <label>ID type
+      <select name="id_type">
+        <option value="" {{ 'selected' if not form.get('id_type') }}>— Not provided —</option>
+        {% for t in id_types %}
+        <option value="{{ t }}" {{ 'selected' if form.get('id_type') == t }}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>ID number<input type="text" name="id_number" value="{{ form.get('id_number','') }}"></label>
+  </div>
+  <div class="form-row">
+    <label>Next of kin — name<input type="text" name="next_of_kin_name" value="{{ form.get('next_of_kin_name','') }}"></label>
+    <label>Next of kin — phone<input type="text" name="next_of_kin_phone" value="{{ form.get('next_of_kin_phone','') }}"></label>
+  </div>
+
   <div class="form-actions">
     <a href="{{ url_for('guests') }}" class="btn btn-secondary">Cancel</a>
     <button type="submit" class="btn btn-primary">Add guest</button>

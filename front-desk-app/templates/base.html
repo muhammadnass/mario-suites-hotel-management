@@ -29,6 +29,7 @@
         <a href="{{ url_for('rooms') }}" class="{{ 'active' if request.endpoint == 'rooms' }}">Rooms</a>
         {% if is_manager_or_admin %}
         <a href="{{ url_for('revenue_report') }}" class="{{ 'active' if request.endpoint in ['revenue_report','guests_report','guests_report_setup'] }}">Revenue</a>
+        <a href="{{ url_for('guest_manifest') }}" class="{{ 'active' if request.endpoint in ['guest_manifest','guest_manifest_pdf'] }}">Manifest</a>
         {% endif %}
         {% if is_admin %}
         <a href="{{ url_for('users_page') }}" class="{{ 'active' if request.endpoint in ['users_page','add_user','reset_password'] }}">Users</a>

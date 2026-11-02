@@ -4,7 +4,10 @@
 
 <div class="page-head">
   <h1>{{ guest['name'] }}</h1>
-  <a href="{{ url_for('new_booking', guest_id=guest['id']) }}" class="btn btn-primary">+ New Booking</a>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('edit_guest', guest_id=guest['id']) }}" class="btn btn-secondary">Edit details</a>
+    <a href="{{ url_for('new_booking', guest_id=guest['id']) }}" class="btn btn-primary">+ New Booking</a>
+  </div>
 </div>
 
 <div class="detail-grid">
@@ -12,6 +15,18 @@
   <div><span class="detail-label">Email</span><span>{{ guest['email'] or '&mdash;' }}</span></div>
   <div><span class="detail-label">Address</span><span>{{ guest['address'] or '&mdash;' }}</span></div>
   <div><span class="detail-label">Guest since</span><span>{{ guest['created_at'][:10] }}</span></div>
+  {% if guest['nationality'] %}
+  <div><span class="detail-label">Nationality</span><span>{{ guest['nationality'] }}</span></div>
+  {% endif %}
+  {% if guest['occupation'] %}
+  <div><span class="detail-label">Occupation</span><span>{{ guest['occupation'] }}</span></div>
+  {% endif %}
+  {% if guest['id_type'] or guest['id_number'] %}
+  <div><span class="detail-label">ID</span><span>{{ guest['id_type'] or 'ID' }}{% if guest['id_number'] %} &mdash; {{ guest['id_number'] }}{% endif %}</span></div>
+  {% endif %}
+  {% if guest['next_of_kin_name'] or guest['next_of_kin_phone'] %}
+  <div><span class="detail-label">Next of kin</span><span>{{ guest['next_of_kin_name'] or '&mdash;' }}{% if guest['next_of_kin_phone'] %} ({{ guest['next_of_kin_phone'] }}){% endif %}</span></div>
+  {% endif %}
 </div>
 
 {% if credit_balance and credit_balance > 0 %}

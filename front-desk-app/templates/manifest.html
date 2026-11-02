@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Guest Manifest - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Guest manifest</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('guest_manifest') }}" class="btn btn-secondary">Change dates</a>
+    <a href="{{ url_for('guest_manifest_pdf', **{'from': from_date, 'to': to_date}) }}" class="btn btn-primary">Download PDF</a>
+  </div>
+</div>
+<p class="hint" style="margin-top:-8px;">{{ from_date }} to {{ to_date }} &middot; generated {{ generated_at }}</p>
+
+{% if rows %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr>
+      <th>Guest</th><th>Phone</th><th>ID type / no.</th><th>Nationality</th><th>Room</th>
+      <th>Check-in</th><th>Checked in by</th><th>Check-out</th><th>Checked out by</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in rows %}
+    <tr>
+      <td><a href="{{ url_for('guest_detail', guest_id=b['guest_id']) }}">{{ b['guest_name'] }}</a></td>
+      <td>{{ b['guest_phone'] }}</td>
+      <td>{% if b['id_type'] or b['id_number'] %}{{ b['id_type'] or '' }}{% if b['id_number'] %} &mdash; {{ b['id_number'] }}{% endif %}{% else %}&mdash;{% endif %}</td>
+      <td>{{ b['nationality'] or '&mdash;' }}</td>
+      <td>{{ b['room_number'] }} ({{ b['floor'] }})</td>
+      <td>{{ b['check_in']|fmt_dt }}</td>
+      <td>{{ b['checked_in_by'] or '&mdash;' }}</td>
+      <td>
+        {% if b['status'] == 'checked_out' and b['actual_check_out'] %}
+          {{ b['actual_check_out']|fmt_dt }}
+        {% else %}
+          Still checked in
+        {% endif %}
+      </td>
+      <td>{{ b['checked_out_by'] or '&mdash;' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty-state">No guests checked in during this period.</p>
+{% endif %}
+
+{% endblock %}

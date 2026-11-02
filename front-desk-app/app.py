@@ -13,6 +13,7 @@ See the project's README.md for full setup instructions, including how to
 run this permanently in the background on Windows via NSSM.
 """
 
+import io
 import json
 import os
 import sqlite3
@@ -24,8 +25,14 @@ from datetime import date, datetime
 from datetime import time as dtime
 from functools import wraps
 
-from flask import Flask, Response, flash, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 app = Flask(__name__)
 # IMPORTANT: change this to a long random string before putting this app in
@@ -62,6 +69,16 @@ SEED_ROOMS = [
     ("B5", "First Floor", 25000),
 ]
 
+# Forms of ID the front desk can record for a guest, matching what's
+# commonly accepted for hotel guest registration in Nigeria.
+ID_TYPES = [
+    "National ID (NIN)",
+    "International Passport",
+    "Driver's License",
+    "Voter's Card",
+    "Other",
+]
+
 
 # ---------------------------------------------------------------------------
 # Database helpers
@@ -90,6 +107,25 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
+
+    # Hotel-standard guest registration fields, added after the app first
+    # shipped with just name/phone/email/address — this tops up an older
+    # hotel.db safely, the same way the bookings table's columns below do.
+    # Every one of these is optional: Name and Phone stay the only required
+    # fields, so front-desk staff can still check a guest in quickly even
+    # when ID isn't on hand yet, and fill these in later via "Edit guest".
+    existing_guest_cols = {row["name"] for row in cur.execute("PRAGMA table_info(guests)").fetchall()}
+    new_guest_columns = {
+        "nationality": "TEXT",         # defaults to 'Nigerian' in the app, not here, so old rows aren't silently relabeled
+        "id_type": "TEXT",             # one of ID_TYPES above
+        "id_number": "TEXT",
+        "occupation": "TEXT",
+        "next_of_kin_name": "TEXT",
+        "next_of_kin_phone": "TEXT",
+    }
+    for col, col_type in new_guest_columns.items():
+        if col not in existing_guest_cols:
+            cur.execute(f"ALTER TABLE guests ADD COLUMN {col} {col_type}")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
@@ -1104,6 +1140,24 @@ def guests():
     return render_template("guests.html", guests=rows, search=search)
 
 
+def _guest_registration_fields(form):
+    """Pull the six optional hotel-registration fields out of a submitted
+    form, trimmed, with nationality defaulting to 'Nigerian' when left
+    blank. Shared by add_guest and edit_guest so the two stay consistent."""
+    nationality = (form.get("nationality") or "").strip() or "Nigerian"
+    id_type = (form.get("id_type") or "").strip()
+    if id_type not in ID_TYPES:
+        id_type = ""
+    return {
+        "nationality": nationality,
+        "id_type": id_type,
+        "id_number": (form.get("id_number") or "").strip(),
+        "occupation": (form.get("occupation") or "").strip(),
+        "next_of_kin_name": (form.get("next_of_kin_name") or "").strip(),
+        "next_of_kin_phone": (form.get("next_of_kin_phone") or "").strip(),
+    }
+
+
 @app.route("/guests/add", methods=["GET", "POST"])
 def add_guest():
     if request.method == "POST":
@@ -1111,22 +1165,78 @@ def add_guest():
         phone = request.form.get("phone", "").strip()
         email = request.form.get("email", "").strip()
         address = request.form.get("address", "").strip()
+        reg = _guest_registration_fields(request.form)
 
         if not name or not phone:
             flash("Name and phone number are required.", "error")
-            return render_template("add_guest.html", form=request.form)
+            return render_template("add_guest.html", form=request.form, id_types=ID_TYPES)
 
         conn = get_db()
         conn.execute(
-            "INSERT INTO guests (name, phone, email, address, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, phone, email, address, datetime.now().isoformat(timespec="seconds")),
+            """INSERT INTO guests
+               (name, phone, email, address, nationality, id_type, id_number,
+                occupation, next_of_kin_name, next_of_kin_phone, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                name, phone, email, address,
+                reg["nationality"], reg["id_type"], reg["id_number"],
+                reg["occupation"], reg["next_of_kin_name"], reg["next_of_kin_phone"],
+                datetime.now().isoformat(timespec="seconds"),
+            ),
         )
         conn.commit()
         conn.close()
         flash(f"Guest '{name}' added successfully.", "success")
         return redirect(url_for("guests"))
 
-    return render_template("add_guest.html", form={})
+    return render_template("add_guest.html", form={}, id_types=ID_TYPES)
+
+
+@app.route("/guests/<int:guest_id>/edit", methods=["GET", "POST"])
+def edit_guest(guest_id):
+    """Correct or fill in a returning guest's details later — e.g. ID
+    details weren't on hand at check-in — without creating a duplicate
+    guest record. Open to every logged-in role, since Staff already
+    handles guest registration day-to-day."""
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if guest is None:
+        conn.close()
+        flash("Guest not found.", "error")
+        return redirect(url_for("guests"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        phone = request.form.get("phone", "").strip()
+        email = request.form.get("email", "").strip()
+        address = request.form.get("address", "").strip()
+        reg = _guest_registration_fields(request.form)
+
+        if not name or not phone:
+            conn.close()
+            flash("Name and phone number are required.", "error")
+            return render_template("edit_guest.html", guest=guest, form=request.form, id_types=ID_TYPES)
+
+        conn.execute(
+            """UPDATE guests
+               SET name = ?, phone = ?, email = ?, address = ?, nationality = ?,
+                   id_type = ?, id_number = ?, occupation = ?,
+                   next_of_kin_name = ?, next_of_kin_phone = ?
+               WHERE id = ?""",
+            (
+                name, phone, email, address,
+                reg["nationality"], reg["id_type"], reg["id_number"],
+                reg["occupation"], reg["next_of_kin_name"], reg["next_of_kin_phone"],
+                guest_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+        flash(f"Guest '{name}' updated.", "success")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    conn.close()
+    return render_template("edit_guest.html", guest=guest, form=dict(guest), id_types=ID_TYPES)
 
 
 @app.route("/guests/report")
@@ -1292,6 +1402,135 @@ def revenue_report():
         by_customer=by_customer,
         generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Guest manifest (Admin/Manager only): a compliance-style register of every
+# guest checked in during a chosen date range, with who checked them in/out
+# and when — separate from the financial guests_report above, and
+# downloadable as a real PDF rather than relying on a browser's print
+# dialog.
+# ---------------------------------------------------------------------------
+
+def _manifest_bookings(conn, from_date, to_date):
+    """Every booking whose check-in date falls within [from_date, to_date],
+    joined to the guest's registration details and the room, oldest first."""
+    return conn.execute(
+        """SELECT b.*, g.name AS guest_name, g.phone AS guest_phone,
+                  g.nationality, g.id_type, g.id_number,
+                  r.room_number, r.floor
+           FROM bookings b
+           JOIN guests g ON g.id = b.guest_id
+           JOIN rooms r ON r.id = b.room_id
+           WHERE substr(b.check_in, 1, 10) BETWEEN ? AND ?
+           ORDER BY b.check_in""",
+        (from_date, to_date),
+    ).fetchall()
+
+
+@app.route("/reports/manifest")
+@roles_required("admin", "manager")
+def guest_manifest():
+    from_date = (request.args.get("from") or "").strip()
+    to_date = (request.args.get("to") or "").strip()
+
+    if not (from_date and to_date):
+        today = date.today().isoformat()
+        return render_template(
+            "manifest_setup.html",
+            default_from=today,
+            default_to=today,
+        )
+
+    conn = get_db()
+    rows = _manifest_bookings(conn, from_date, to_date)
+    conn.close()
+
+    return render_template(
+        "manifest.html",
+        rows=rows,
+        from_date=from_date,
+        to_date=to_date,
+        generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p"),
+    )
+
+
+@app.route("/reports/manifest.pdf")
+@roles_required("admin", "manager")
+def guest_manifest_pdf():
+    from_date = (request.args.get("from") or "").strip()
+    to_date = (request.args.get("to") or "").strip()
+    if not (from_date and to_date):
+        flash("Choose a date range first.", "error")
+        return redirect(url_for("guest_manifest"))
+
+    conn = get_db()
+    rows = _manifest_bookings(conn, from_date, to_date)
+    conn.close()
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=14 * mm, rightMargin=14 * mm,
+        topMargin=14 * mm, bottomMargin=14 * mm,
+        title=f"Mario Suites Ltd - Guest Manifest {from_date} to {to_date}",
+    )
+
+    gold = colors.HexColor("#A9802E")
+    brown = colors.HexColor("#5C4420")
+    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=16, textColor=brown, spaceAfter=2)
+    meta_style = ParagraphStyle("Meta", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#6b5a3a"))
+
+    elements = [
+        Paragraph(f"{HOTEL_NAME} &mdash; Guest Manifest", title_style),
+        Paragraph(f"Period: {from_date} to {to_date}", meta_style),
+        Paragraph(f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}", meta_style),
+        Spacer(1, 10 * mm),
+    ]
+
+    if not rows:
+        elements.append(Paragraph("No guests checked in during this period.", meta_style))
+    else:
+        header = ["Guest", "Phone", "ID Type / No.", "Nationality", "Room",
+                   "Check-in", "Checked in by", "Check-out", "Checked out by"]
+        cell_style = ParagraphStyle("Cell", fontName="Helvetica", fontSize=8, leading=10)
+        header_style = ParagraphStyle("Head", fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.white)
+
+        table_data = [[Paragraph(h, header_style) for h in header]]
+        for b in rows:
+            id_display = " / ".join(x for x in [b["id_type"], b["id_number"]] if x) or "—"
+            check_out_display = format_dt_display(b["actual_check_out"] or "") if b["status"] == "checked_out" and b["actual_check_out"] else (
+                "Still checked in" if b["status"] != "checked_out" else "—"
+            )
+            table_data.append([
+                Paragraph(b["guest_name"] or "—", cell_style),
+                Paragraph(b["guest_phone"] or "—", cell_style),
+                Paragraph(id_display, cell_style),
+                Paragraph(b["nationality"] or "—", cell_style),
+                Paragraph(f"{b['room_number']} ({b['floor']})", cell_style),
+                Paragraph(format_dt_display(b["check_in"]), cell_style),
+                Paragraph(b["checked_in_by"] or "—", cell_style),
+                Paragraph(check_out_display, cell_style),
+                Paragraph(b["checked_out_by"] or "—", cell_style),
+            ])
+
+        col_widths = [32*mm, 24*mm, 30*mm, 22*mm, 22*mm, 28*mm, 24*mm, 28*mm, 24*mm]
+        table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), gold),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E4D5B7")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FBF3E3")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    filename = f"guest_manifest_{from_date}_to_{to_date}.pdf"
+    return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 
 @app.route("/guests/<int:guest_id>")

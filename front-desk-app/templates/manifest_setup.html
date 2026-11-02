@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Guest Manifest - Mario Suites Ltd{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Guest manifest</h1></div>
+<p class="hint" style="margin-top:-8px;">
+  A register of every guest checked in during a date range, with the room, who checked them in and out,
+  and the timestamps — downloadable as a PDF for record-keeping or inspection.
+</p>
+
+<div class="form-card-wrap">
+<form class="form-card" method="get" action="{{ url_for('guest_manifest') }}">
+  <div class="form-row">
+    <label>From<input type="date" name="from" value="{{ default_from }}" required></label>
+    <label>To<input type="date" name="to" value="{{ default_to }}" required></label>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Run manifest</button>
+  </div>
+</form>
+</div>
+
+{% endblock %}
